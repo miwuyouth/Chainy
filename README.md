@@ -4,6 +4,12 @@ macOS proxy-chaining client — VMess / Trojan / Shadowsocks / VLESS / SOCKS5 / 
 
 This repository hosts **compiled releases only** — the source is not public yet.
 
+## Screenshots
+
+| Overview | Chain Builder | Nodes |
+|---|---|---|
+| ![Overview](docs/screenshots/overview.png) | ![Chain Builder](docs/screenshots/chain-builder.png) | ![Nodes](docs/screenshots/nodes.png) |
+
 ## Download
 
 Grab the latest `.dmg` from the [Releases](../../releases) page.
