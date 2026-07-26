@@ -51,6 +51,7 @@ This release is **ad-hoc signed only**, not notarized by Apple. macOS may say it
 1. **Nodes** — click *Add Node* to add one manually, or *Import from Clipboard* to pull in a Clash/V2Ray subscription URL.
 2. **Chain Builder** — click *+* to add hops between client and destination, name the chain, click *Save Chain*.
 3. **Overview** — select a saved chain and click *Connect*. Turn on *Auto-optimize* to have it automatically switch to whichever saved chain is fastest.
+4. **Point your system/browser proxy at Chainy** — once connected, it listens locally on `127.0.0.1:1080` as a mixed SOCKS5 + HTTP proxy (auto-detected, no need to pick one). The port is configurable in **Settings**.
 
 ## Feedback
 
