@@ -46,6 +46,12 @@ This release is **ad-hoc signed only**, not notarized by Apple. macOS may say it
   ```
 - Or: **System Settings → Privacy & Security** → scroll down → **Open Anyway**.
 
+## Usage
+
+1. **Nodes** — click *Add Node* to add one manually, or *Import from Clipboard* to pull in a Clash/V2Ray subscription URL.
+2. **Chain Builder** — click *+* to add hops between client and destination, name the chain, click *Save Chain*.
+3. **Overview** — select a saved chain and click *Connect*. Turn on *Auto-optimize* to have it automatically switch to whichever saved chain is fastest.
+
 ## Feedback
 
 Found a bug or have a feature request? Please open an [Issue](../../issues) — include your macOS version and, if it crashed, the crash log if available.
