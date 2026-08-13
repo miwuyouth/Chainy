@@ -38,3 +38,16 @@ The scripts under `Scripts/` also provide focused integration checks. Never repl
 - Do not commit generated `.xcodeproj`, `.build`, release artifacts, credentials, or real subscription data.
 
 By contributing, you agree that your contribution is licensed under the MIT License.
+
+## Maintainer releases
+
+Release packaging is automated by GitHub Actions. After the release commit is on `main`, create and push a semantic version tag:
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The Release workflow tests the tagged source, builds an ad-hoc-signed universal app for Apple Silicon and Intel, creates the DMG and SHA-256 checksum, and publishes both files to a new GitHub Release. Tags must point to a clean commit and use the `vX.Y.Z` format.
+
+To create the same artifacts locally from an already tagged commit, run `Scripts/build_release.sh`.
