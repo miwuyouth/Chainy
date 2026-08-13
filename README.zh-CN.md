@@ -8,9 +8,15 @@ Chainy 在本机运行，可将 VMess、Trojan、Shadowsocks、VLESS、SOCKS5 �
 
 ## 截图
 
-| 总览 | 链路构建 | 节点 |
-|---|---|---|
-| ![总览](docs/screenshots/overview.png) | ![链路构建](docs/screenshots/chain-builder.png) | ![节点](docs/screenshots/nodes.png) |
+### 可视化构建多跳线路
+
+<p align="center">
+  <img src="docs/screenshots/chain-builder.png" alt="Chainy 可视化链路构建器展示两跳线路" width="900">
+</p>
+
+| 监控当前线路 | 管理导入的节点 |
+|---|---|
+| ![Chainy 总览与实时连接统计](docs/screenshots/overview.png) | ![Chainy 节点库](docs/screenshots/nodes.png) |
 
 ## 下载
 

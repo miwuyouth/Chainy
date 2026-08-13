@@ -13,9 +13,15 @@ Chainy runs locally and combines VMess, Trojan, Shadowsocks, VLESS, SOCKS5, and 
 
 ## Screenshots
 
-| Overview | Chain Builder | Nodes |
-|---|---|---|
-| ![Overview](docs/screenshots/overview.png) | ![Chain Builder](docs/screenshots/chain-builder.png) | ![Nodes](docs/screenshots/nodes.png) |
+### Build multi-hop routes visually
+
+<p align="center">
+  <img src="docs/screenshots/chain-builder.png" alt="Chainy visual chain builder showing a two-hop route" width="900">
+</p>
+
+| Monitor the active route | Manage imported nodes |
+|---|---|
+| ![Chainy overview with live connection statistics](docs/screenshots/overview.png) | ![Chainy node library](docs/screenshots/nodes.png) |
 
 ## Download
 
