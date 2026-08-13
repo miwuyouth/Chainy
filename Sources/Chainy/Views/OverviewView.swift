@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import AppKit
 import ChainCore
 import ProxyKit
 
@@ -12,6 +13,7 @@ import ProxyKit
 struct OverviewView: View {
     @EnvironmentObject var store: AppStore
     @Environment(\.dashboardPalette) private var palette
+    @AppStorage("localProxyPort") private var configuredLocalProxyPort = 1080
 
     private var activeChain: NamedProxyChain? { store.settings.activeChain }
 
@@ -23,11 +25,15 @@ struct OverviewView: View {
 
     @State private var isHoveringConnect = false
     @State private var isHoveringRunTest = false
+    @State private var copiedProxyLabel: String?
+    @State private var isShowingSetupGuide = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 currentChainCard
+
+                localProxyGuideCard
 
                 trafficChartCard
 
@@ -40,6 +46,171 @@ struct OverviewView: View {
                 }
             }
             .padding(20)
+        }
+        .sheet(isPresented: $isShowingSetupGuide) {
+            proxySetupGuide
+        }
+    }
+
+    // MARK: - Local proxy onboarding
+
+    /// Connecting Chainy starts a local listener; it does not automatically
+    /// redirect macOS traffic. Keeping this instruction on Overview (rather
+    /// than in a one-time welcome dialog) makes the required second step
+    /// discoverable both on first use and whenever someone returns later.
+    private var localProxyGuideCard: some View {
+        DashboardCard(padding: 18) {
+            HStack(alignment: .top, spacing: 16) {
+                Image(systemName: proxyGuideIcon)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(proxyGuideColor)
+                    .frame(width: 38, height: 38)
+                    .background(proxyGuideBackground, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Text(proxyGuideTitle)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(palette.text)
+                        if store.hasDetectedProxyClient && store.isProxyRunning {
+                            DashboardBadge("PROXY CLIENT DETECTED", foreground: palette.green, background: palette.greenDim)
+                        }
+                    }
+
+                    Text(proxyGuideMessage)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(palette.textDim)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if store.isProxyRunning {
+                        HStack(spacing: 10) {
+                            proxyAddressRow(label: "SOCKS5")
+                            proxyAddressRow(label: "HTTP")
+                        }
+                    }
+                }
+
+                Spacer(minLength: 12)
+
+                Button("Setup Guide") {
+                    isShowingSetupGuide = true
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+        .accessibilityIdentifier("overview.localProxyGuide")
+    }
+
+    private var proxyGuideTitle: String {
+        if !store.isProxyRunning { return "Connect a chain to start the local proxy" }
+        if store.hasDetectedProxyClient { return "Proxy client detected" }
+        return "Chainy is ready — connect your apps"
+    }
+
+    private var proxyGuideMessage: String {
+        if !store.isProxyRunning {
+            return "Chainy creates a local SOCKS5/HTTP proxy. Select a chain and connect, then point your browser or macOS proxy settings to the address shown here."
+        }
+        if store.hasDetectedProxyClient {
+            return "A local proxy client has reached Chainy. Its supported proxy requests will be relayed through the active chain."
+        }
+        return "Chainy is listening locally, but no proxy client has connected yet. Traffic will not use Chainy until your browser or macOS proxy is configured."
+    }
+
+    private var proxyGuideIcon: String {
+        guard store.isProxyRunning else { return "1.circle.fill" }
+        return store.hasDetectedProxyClient ? "checkmark.circle.fill" : "2.circle.fill"
+    }
+
+    private var proxyGuideColor: Color {
+        store.hasDetectedProxyClient && store.isProxyRunning ? palette.green : palette.accent
+    }
+
+    private var proxyGuideBackground: Color {
+        store.hasDetectedProxyClient && store.isProxyRunning ? palette.greenDim : palette.accentDim
+    }
+
+    private var localProxyAddress: String {
+        "127.0.0.1:\(store.proxyListenPort.map(Int.init) ?? configuredLocalProxyPort)"
+    }
+
+    private func proxyAddressRow(label: String) -> some View {
+        HStack(spacing: 7) {
+            Text(label)
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(palette.textFaint)
+            Text(localProxyAddress)
+                .font(.system(size: 11.5, design: .monospaced))
+                .foregroundStyle(palette.text)
+            Button {
+                copyProxyAddress(label: label)
+            } label: {
+                Image(systemName: copiedProxyLabel == label ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: 10.5, weight: .medium))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(copiedProxyLabel == label ? palette.green : palette.accent)
+            .help("Copy \(label) proxy address")
+            .accessibilityLabel("Copy \(label) proxy address")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(palette.bgElevated, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func copyProxyAddress(label: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(localProxyAddress, forType: .string)
+        copiedProxyLabel = label
+        Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard !Task.isCancelled, copiedProxyLabel == label else { return }
+            copiedProxyLabel = nil
+        }
+    }
+
+    private var proxySetupGuide: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Connect an app to Chainy")
+                        .font(.system(size: 20, weight: .bold))
+                    Text("Chainy supports SOCKS5 and HTTP on the same local address.")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(palette.textDim)
+                }
+                Spacer()
+                Button("Done") { isShowingSetupGuide = false }
+                    .keyboardShortcut(.defaultAction)
+            }
+
+            setupStep(number: "1", title: "Connect a chain", detail: "Choose a saved chain on Overview and click Connect.")
+            setupStep(number: "2", title: "Configure your browser or macOS", detail: "Set its SOCKS5 or HTTP proxy server to \(localProxyAddress). Leave username and password empty.")
+            setupStep(number: "3", title: "Confirm traffic", detail: "Return to Overview. The card turns green after Chainy detects the first client connection.")
+
+            Text("To configure all macOS traffic: System Settings → Network → your active connection → Details → Proxies. Remember to turn those proxy settings off before disconnecting Chainy.")
+                .font(.system(size: 12))
+                .foregroundStyle(palette.textDim)
+                .padding(12)
+                .background(palette.amberDim, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .padding(24)
+        .frame(width: 560)
+        .background(palette.bgPanel)
+    }
+
+    private func setupStep(number: String, title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text(number)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(palette.accent)
+                .frame(width: 26, height: 26)
+                .background(palette.accentDim, in: Circle())
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.system(size: 13.5, weight: .semibold))
+                Text(detail).font(.system(size: 12.5)).foregroundStyle(palette.textDim)
+            }
         }
     }
 

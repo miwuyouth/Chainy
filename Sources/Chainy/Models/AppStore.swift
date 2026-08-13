@@ -329,6 +329,13 @@ public final class AppStore: ObservableObject {
     /// callback (same shape as `onUnexpectedStop` below), so Overview's
     /// "Active Connections" stat is real instead of a placeholder.
     @Published public private(set) var activeConnectionCount = 0
+    /// Becomes true after the local listener accepts its first client
+    /// connection in the current proxy session. Unlike
+    /// `activeConnectionCount`, it stays true after that connection closes,
+    /// so Overview can confirm that the browser/system proxy was configured
+    /// successfully instead of reverting to an onboarding warning whenever
+    /// a page finishes loading. Reset on every new Connect.
+    @Published public private(set) var hasDetectedProxyClient = false
     /// Currently-relaying connections, one entry per accepted local socket --
     /// polled from `LocalProxyServer.snapshotConnections()` on the same
     /// once-a-second cadence as the throughput/timeout samples below. Feeds
@@ -848,6 +855,7 @@ public final class AppStore: ObservableObject {
     public func connect() async {
         guard !isProxyRunning, let chain = settings.activeChain else { return }
         proxyError = nil
+        hasDetectedProxyClient = false
         let allowLAN = Self.configuredAllowLAN()
         proxyLog(.info, "Store", "Connect requested using chain '\(chain.name)'\(allowLAN ? " (LAN connections allowed)" : "")")
         do {
@@ -869,6 +877,9 @@ public final class AppStore: ObservableObject {
                 onConnectionCountChanged: { [weak self] count in
                     Task { @MainActor in
                         self?.activeConnectionCount = count
+                        if count > 0 {
+                            self?.hasDetectedProxyClient = true
+                        }
                     }
                 }
             )
