@@ -71,6 +71,23 @@ open Chainy.xcodeproj
 swift test --skip InteropTests
 ```
 
+## 发布新版本
+
+发布打包已经由 GitHub Actions 自动完成。确认发布提交位于 `main` 后，只需创建并推送符合语义化版本格式的标签：
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+Release workflow 会测试标签对应的源码，构建同时支持 Apple Silicon 和 Intel 的 ad-hoc 签名应用，生成 `Chainy-0.2.0.dmg` 和 SHA-256 校验文件，并自动创建 GitHub Release。标签必须指向干净的提交，格式必须为 `vX.Y.Z`。
+
+如果需要在已打标签的提交上生成相同产物，可以运行：
+
+```bash
+Scripts/build_release.sh
+```
+
 ## 快速开始
 
 1. 打开 **Nodes** 手动添加节点；或者复制 Clash/V2Ray 订阅地址，再点击 **Import from Clipboard**。

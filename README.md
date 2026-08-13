@@ -83,6 +83,23 @@ swift test --skip InteropTests
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and optional integration tests.
 
+## Publish a release
+
+Release packaging is automated by GitHub Actions. After the release commit is on `main`, create and push a semantic version tag:
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The Release workflow tests the tagged source, builds an ad-hoc-signed universal app for Apple Silicon and Intel, creates `Chainy-0.2.0.dmg` and its SHA-256 checksum, then publishes both files to a new GitHub Release. The tag must point to a clean commit and use the `vX.Y.Z` format.
+
+To build the same artifacts locally from an already tagged commit:
+
+```bash
+Scripts/build_release.sh
+```
+
 ## Quick start
 
 1. Open **Nodes** and add a node, or copy a Clash/V2Ray subscription URL and choose **Import from Clipboard**.
