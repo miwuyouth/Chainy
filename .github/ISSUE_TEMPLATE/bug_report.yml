@@ -1,0 +1,48 @@
+name: Bug report
+description: Report reproducible incorrect behavior
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include proxy credentials, subscription URLs, private hosts, or unredacted logs. Report vulnerabilities through the Security tab.
+  - type: input
+    id: version
+    attributes:
+      label: Chainy version or commit
+      placeholder: v0.1.0 or commit SHA
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: macOS and Mac model
+      placeholder: macOS 15.6, Apple Silicon
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Use placeholder hosts and credentials.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and redacted logs
+    validations:
+      required: true
+  - type: checkboxes
+    id: redacted
+    attributes:
+      label: Sensitive data
+      options:
+        - label: I removed credentials, subscription URLs, private hosts, and identifying log content.
+          required: true

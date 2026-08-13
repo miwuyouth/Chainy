@@ -1,24 +1,45 @@
 # Chainy
 
+[简体中文](README.zh-CN.md)
+
+[![CI](https://github.com/miwuyouth/Chainy/actions/workflows/ci.yml/badge.svg)](https://github.com/miwuyouth/Chainy/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/miwuyouth/Chainy)](https://github.com/miwuyouth/Chainy/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/miwuyouth/Chainy/total)](https://github.com/miwuyouth/Chainy/releases)
-[![Last commit](https://img.shields.io/github/last-commit/miwuyouth/Chainy)](https://github.com/miwuyouth/Chainy/commits/main)
-[![Issues](https://img.shields.io/github/issues/miwuyouth/Chainy)](https://github.com/miwuyouth/Chainy/issues)
-![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-blue)
-![Arch](https://img.shields.io/badge/arch-Apple%20Silicon%20%7C%20Intel-lightgrey)
-![License](https://img.shields.io/badge/license-proprietary-lightgrey)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Platform](https://img.shields.io/badge/macOS-13%2B-black)
 
-A native macOS proxy-chaining client — build multi-hop chains across **VMess, Trojan, Shadowsocks, VLESS, SOCKS5, and HTTP** proxies, with full UDP relay support. Universal binary for Apple Silicon and Intel.
+**A visual proxy-chain builder for macOS. Turn existing nodes into multi-hop routes without writing Xray or sing-box configuration files.**
 
-> Compiled releases only for now — the source isn't public yet. See [Releases](../../releases) for the changelog.
+Chainy runs locally and supports VMess, Trojan, Shadowsocks, VLESS, SOCKS5, and HTTP hops in any order. It includes subscription import, UDP relay, live connection statistics, and automatic chain selection.
+
+> [!IMPORTANT]
+> Chainy does not provide proxy servers or subscription services. You must supply nodes that you are authorized to use and comply with the laws and policies that apply to you.
+
+## Why Chainy?
+
+Most proxy clients select one node. Chainy is focused on a narrower job: making routes such as the following easy to build, inspect, and switch:
+
+```text
+Your Mac -> local entry node -> stable relay -> destination
+```
+
+Use it when you want to:
+
+- combine an accessible entry node with a preferred exit node;
+- compare several saved multi-hop routes;
+- reuse nodes from Clash or V2Ray subscriptions;
+- inspect latency, throughput, traffic, and timeout behavior without maintaining configuration files by hand.
 
 ## Features
 
-- **Chain Builder** — visually chain multiple hops between client and destination
-- **Subscription import** — pull nodes from Clash / V2Ray subscription URLs
-- **Live stats** — latency, bandwidth, traffic graph, timeout rate
-- **Auto-optimize** — automatically switches to the fastest chain
-- **UDP relay** across all supported protocols
+- **Visual Chain Builder** — arrange any number of supported hops in any order
+- **Subscription import** — import Clash YAML and V2Ray-style links from the clipboard
+- **Mixed local proxy** — SOCKS5 and HTTP on the same configurable port
+- **UDP relay** — relay UDP across supported chain combinations
+- **Diagnostics** — latency, bandwidth, live traffic, connection history, and timeout rate
+- **Auto-optimize** — periodically test saved chains and select the best measured route
+- **Local configuration** — no account, analytics, or Chainy-operated cloud service
+- **Native macOS app** — Swift and SwiftUI, universal release for Apple Silicon and Intel
 
 ## Screenshots
 
@@ -26,33 +47,66 @@ A native macOS proxy-chaining client — build multi-hop chains across **VMess, 
 |---|---|---|
 | ![Overview](docs/screenshots/overview.png) | ![Chain Builder](docs/screenshots/chain-builder.png) | ![Nodes](docs/screenshots/nodes.png) |
 
-## Download
+## Requirements
 
-Grab the latest `.dmg` from the [Releases](../../releases) page.
+- macOS 13 Ventura or later
+- Xcode 15 or later when building from source
+- [XcodeGen](https://github.com/yonaskolb/XcodeGen) when generating the Xcode project
 
-## Install
+## Install a release
 
-1. Open the dmg, drag **Chainy.app** into the **Applications** shortcut inside it.
-2. See "First launch" below — Gatekeeper will block it on first open since this build isn't notarized yet.
+Download the latest `.dmg` from [GitHub Releases](https://github.com/miwuyouth/Chainy/releases/latest), open it, and drag Chainy into Applications.
 
-## First launch (unsigned build)
+### About the current unsigned build
 
-This release is **ad-hoc signed only**, not notarized by Apple. macOS may say it's "damaged" or from an "unidentified developer" — that's expected. Do one of:
+The project does not currently have a paid Apple Developer account, so the downloadable build is not notarized. The source and build configuration are public so you can inspect or build the app yourself.
 
-- **Right-click (Control-click) `Chainy.app` → Open**, then confirm **Open** in the dialog. Only needed once.
-- If macOS says the app "is damaged and can't be opened," run in Terminal, then reopen:
-  ```
-  xattr -cr /Applications/Chainy.app
-  ```
-- Or: **System Settings → Privacy & Security** → scroll down → **Open Anyway**.
+On first launch, try **Control-click Chainy → Open → Open**. If macOS still blocks it, go to **System Settings → Privacy & Security** and choose **Open Anyway**. The terminal workaround is documented in [Troubleshooting](docs/TROUBLESHOOTING.md).
 
-## Usage
+## Build from source
 
-1. **Nodes** — click *Add Node* to add one manually, or *Import from Clipboard* to pull in a Clash/V2Ray subscription URL.
-2. **Chain Builder** — click *+* to add hops between client and destination, name the chain, click *Save Chain*.
-3. **Overview** — select a saved chain and click *Connect*. Turn on *Auto-optimize* to have it automatically switch to whichever saved chain is fastest.
-4. **Point your system/browser proxy at Chainy** — once connected, it listens locally on `127.0.0.1:1080` as a mixed SOCKS5 + HTTP proxy (auto-detected, no need to pick one). The port is configurable in **Settings**.
+```bash
+git clone https://github.com/miwuyouth/Chainy.git
+cd Chainy
+brew install xcodegen
+xcodegen generate
+open Chainy.xcodeproj
+```
 
-## Feedback
+In Xcode, select the `Chainy` scheme and run the app. Debug builds use ad-hoc signing and do not require a paid developer account.
 
-Found a bug or have a feature request? Please open an [Issue](../../issues) — include your macOS version and, if it crashed, the crash log if available.
+Core package tests can be run without generating the Xcode project:
+
+```bash
+swift test --skip InteropTests
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and optional integration tests.
+
+## Quick start
+
+1. Open **Nodes** and add a node, or copy a Clash/V2Ray subscription URL and choose **Import from Clipboard**.
+2. Open **Chain Builder**, add the hops in order, name the chain, and save it.
+3. Open **Overview**, select the chain, and choose **Connect**.
+4. Configure your system or browser to use `127.0.0.1:1080`. The port is configurable in Settings; the listener accepts SOCKS5 and HTTP automatically.
+5. When finished, disconnect Chainy and restore any proxy setting you changed manually.
+
+> Chainy does not yet change macOS system proxy settings automatically. This is a known onboarding limitation and is on the roadmap.
+
+## Supported formats and limitations
+
+Supported outbound hops include VMess, Trojan, Shadowsocks, VLESS, SOCKS5, and HTTP. Transport and cipher support varies by protocol; unsupported subscription entries are reported during import instead of being silently accepted.
+
+Chainy is early-stage software. Before depending on it, review the current [issues](https://github.com/miwuyouth/Chainy/issues), test your own protocol combination, and keep another way to restore network access.
+
+## Privacy and security
+
+Chainy has no analytics or Chainy-operated backend. Configurations, including proxy credentials and subscription URLs, are stored locally in your user Application Support directory. Diagnostics may contact Google and Tele2 test endpoints through the selected chain. Read [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md) before using sensitive configurations.
+
+## Contributing
+
+Bug reports, protocol compatibility reports, documentation improvements, and focused pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) and use the issue templates.
+
+## License
+
+Chainy is released under the [MIT License](LICENSE).

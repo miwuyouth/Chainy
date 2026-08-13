@@ -1,0 +1,13 @@
+.build/
+build/
+.swiftpm/
+*.xcodeproj
+.DS_Store
+Scripts/xray
+dist/
+.vscode/
+
+# Generated Chainy manual test workbook artifacts
+.artifact-build/
+build_test_cases.mjs
+outputs/chainy-manual-test-cases/

@@ -1,0 +1,109 @@
+name: Chainy
+options:
+  bundleIdPrefix: com.proxydemo
+  deploymentTarget:
+    macOS: "13.0"
+
+packages:
+  ProxyDemo:
+    path: .
+
+targets:
+  ChainyApp:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/Chainy
+    dependencies:
+      - package: ProxyDemo
+        product: ChainCore
+      - package: ProxyDemo
+        product: ProxyKit
+      - package: ProxyDemo
+        product: SOCKS5Core
+      - package: ProxyDemo
+        product: ShadowsocksCore
+      - package: ProxyDemo
+        product: VMessCore
+      - package: ProxyDemo
+        product: SubscriptionCore
+    settings:
+      base:
+        PRODUCT_NAME: Chainy
+        PRODUCT_BUNDLE_IDENTIFIER: com.proxydemo.chainy
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Chainy
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        DEVELOPMENT_TEAM: ""
+        CODE_SIGNING_REQUIRED: NO
+    prebuildScripts:
+      - name: "Require Tagged Commit for Release"
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ "$CONFIGURATION" = "Release" ]; then
+            if [ -n "$(git -C "$SRCROOT" status --porcelain 2>/dev/null)" ]; then
+              echo "error: Release build blocked -- working tree has uncommitted changes. Commit everything first."
+              exit 1
+            fi
+            if ! git -C "$SRCROOT" describe --tags --exact-match HEAD >/dev/null 2>&1; then
+              echo "error: Release build blocked -- HEAD isn't tagged. Run: git tag vX.Y.Z"
+              exit 1
+            fi
+          fi
+    postbuildScripts:
+      - name: "Embed Git Commit"
+        basedOnDependencyAnalysis: false
+        script: |
+          GIT_HASH=$(git -C "$SRCROOT" rev-parse --short=10 HEAD 2>/dev/null || echo "unknown")
+          if [ -n "$(git -C "$SRCROOT" status --porcelain 2>/dev/null)" ]; then
+            GIT_HASH="${GIT_HASH}-dirty"
+          fi
+          PLIST="${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
+          if [ -f "$PLIST" ]; then
+            /usr/libexec/PlistBuddy -c "Delete :GitCommitHash" "$PLIST" 2>/dev/null
+            /usr/libexec/PlistBuddy -c "Add :GitCommitHash string ${GIT_HASH}" "$PLIST"
+            if [ "$CONFIGURATION" = "Release" ]; then
+              TAG=$(git -C "$SRCROOT" describe --tags --exact-match HEAD 2>/dev/null)
+              /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${TAG#v}" "$PLIST"
+            fi
+          fi
+
+  ChainyUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: Tests/ChainyUITests
+    dependencies:
+      - target: ChainyApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.proxydemo.chainy.uitests
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        DEVELOPMENT_TEAM: ""
+        CODE_SIGNING_REQUIRED: NO
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: ChainyApp
+
+schemes:
+  Chainy:
+    build:
+      targets:
+        ChainyApp: all
+        ChainyUITests: [test]
+    test:
+      config: Debug
+      targets:
+        - ChainyUITests
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

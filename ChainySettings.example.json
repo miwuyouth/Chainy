@@ -1,0 +1,45 @@
+{
+  "settings": {
+    "chains": [
+      {
+        "id": "3F2504E0-4F89-11D3-9A0C-0305E82C3301",
+        "name": "Home relay",
+        "hops": [
+          { "protocol": "socks5", "host": "127.0.0.1", "port": 28401 },
+          { "protocol": "shadowsocks", "host": "127.0.0.1", "port": 28402, "password": "mypassword", "cipher": "aes-256-gcm" },
+          { "protocol": "vmess", "host": "127.0.0.1", "port": 28403, "uuid": "0398d470-bc09-4cd5-889d-3ae4c569b6da" }
+        ]
+      },
+      {
+        "id": "5C6A9F1E-2B33-4D8A-9E11-8F2C7A0B4D55",
+        "name": "Work relay",
+        "hops": [
+          { "protocol": "vmess", "host": "127.0.0.1", "port": 28501, "uuid": "b1e6c8a2-9d34-4f77-8c2e-1a5b6d9e0f3a" }
+        ]
+      }
+    ],
+    "activeChainID": "3F2504E0-4F89-11D3-9A0C-0305E82C3301"
+  },
+  "library": [
+    {
+      "id": "7C9E6679-7425-40DE-944B-E07FC1F90AE7",
+      "name": "Home SOCKS5",
+      "hop": { "protocol": "socks5", "host": "127.0.0.1", "port": 28401 }
+    },
+    {
+      "id": "9B2D4E5A-1234-4B5C-8D6E-7F8A9B0C1D2E",
+      "name": "Relay Shadowsocks",
+      "hop": { "protocol": "shadowsocks", "host": "127.0.0.1", "port": 28402, "password": "mypassword", "cipher": "aes-256-gcm" }
+    }
+  ],
+  "subscriptions": [
+    {
+      "id": "2F1A3B4C-5D6E-7F80-9123-456789ABCDEF",
+      "name": "Example subscription",
+      "urlString": "https://example.com/subscribe",
+      "lastImportedAt": "2026-01-01T00:00:00Z",
+      "lastImportedCount": 12,
+      "lastSkippedCount": 1
+    }
+  ]
+}
