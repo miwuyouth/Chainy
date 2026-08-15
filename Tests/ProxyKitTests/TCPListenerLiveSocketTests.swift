@@ -2,9 +2,8 @@ import XCTest
 @testable import ProxyKit
 
 /// Real-socket coverage for `TCPListener`/`TCPConn(accepted:)` -- the accept
-/// side Chainy's local SOCKS5 server is built on. Mirrors
-/// `ChainCoreLiveSocketTests.ChainTestServer`'s own conventions: an
-/// ephemeral port (0) unless a test specifically needs a fixed, already-bound
+/// side Chainy's local SOCKS5 server is built on. Uses an ephemeral port (0)
+/// unless a test specifically needs a fixed, already-bound
 /// one, and a polling wait (rather than an indefinite one) for the accepted
 /// connection to show up.
 final class TCPListenerLiveSocketTests: XCTestCase {

@@ -4,9 +4,9 @@ import ProxyKit
 
 /// Fast, in-memory coverage for `HTTPProxyServer.acceptConnect` -- the HTTP
 /// counterpart to `SOCKS5CoreTests`' `SOCKS5ServerTests`, driving the parser
-/// against a fake transport instead of a real socket.
+/// against an in-memory client transport instead of a real socket.
 final class HTTPProxyServerTests: XCTestCase {
-    private final class FakeHTTPProxyTransport: ByteStreamSource, ByteStreamSink {
+    private final class InMemoryClientTransport: ByteStreamSource, ByteStreamSink {
         private(set) var sent: [[UInt8]] = []
         private var readBuffer: [UInt8]
 
@@ -25,21 +25,21 @@ final class HTTPProxyServerTests: XCTestCase {
     // MARK: - CONNECT
 
     func testAcceptConnectHandlesCONNECTWithExplicitPort() async throws {
-        let transport = FakeHTTPProxyTransport(clientText: "CONNECT example.com:8443 HTTP/1.1\r\nHost: example.com:8443\r\nUser-Agent: test\r\n\r\n")
+        let transport = InMemoryClientTransport(clientText: "CONNECT example.com:8443 HTTP/1.1\r\nHost: example.com:8443\r\nUser-Agent: test\r\n\r\n")
         let request = try await HTTPProxyServer.acceptConnect(over: transport)
         XCTAssertEqual(request, HTTPProxyIncomingRequest(host: "example.com", port: 8443))
         XCTAssertEqual(transport.sent, [Array("HTTP/1.1 200 Connection Established\r\n\r\n".utf8)])
     }
 
     func testAcceptConnectDefaultsPortTo443WhenMissing() async throws {
-        let transport = FakeHTTPProxyTransport(clientText: "CONNECT example.com HTTP/1.1\r\n\r\n")
+        let transport = InMemoryClientTransport(clientText: "CONNECT example.com HTTP/1.1\r\n\r\n")
         let request = try await HTTPProxyServer.acceptConnect(over: transport)
         XCTAssertEqual(request.host, "example.com")
         XCTAssertEqual(request.port, 443)
     }
 
     func testAcceptConnectIsCaseInsensitiveOnMethod() async throws {
-        let transport = FakeHTTPProxyTransport(clientText: "connect example.com:443 HTTP/1.1\r\n\r\n")
+        let transport = InMemoryClientTransport(clientText: "connect example.com:443 HTTP/1.1\r\n\r\n")
         let request = try await HTTPProxyServer.acceptConnect(over: transport)
         XCTAssertEqual(request.host, "example.com")
         XCTAssertTrue(request.replayToOutbound.isEmpty, "CONNECT has nothing to replay -- the tunnel starts clean")
@@ -48,7 +48,7 @@ final class HTTPProxyServerTests: XCTestCase {
     // MARK: - Plain HTTP (absolute-form)
 
     func testAcceptConnectRewritesAbsoluteFormRequestToOriginForm() async throws {
-        let transport = FakeHTTPProxyTransport(clientText: "GET http://example.com/a/b?x=1 HTTP/1.1\r\nHost: example.com\r\nUser-Agent: test\r\n\r\n")
+        let transport = InMemoryClientTransport(clientText: "GET http://example.com/a/b?x=1 HTTP/1.1\r\nHost: example.com\r\nUser-Agent: test\r\n\r\n")
         let request = try await HTTPProxyServer.acceptConnect(over: transport)
         XCTAssertEqual(request.host, "example.com")
         XCTAssertEqual(request.port, 80)
@@ -58,20 +58,20 @@ final class HTTPProxyServerTests: XCTestCase {
     }
 
     func testAcceptConnectUsesExplicitPortInAbsoluteFormURI() async throws {
-        let transport = FakeHTTPProxyTransport(clientText: "GET http://example.com:8080/ HTTP/1.1\r\nHost: example.com:8080\r\n\r\n")
+        let transport = InMemoryClientTransport(clientText: "GET http://example.com:8080/ HTTP/1.1\r\nHost: example.com:8080\r\n\r\n")
         let request = try await HTTPProxyServer.acceptConnect(over: transport)
         XCTAssertEqual(request.port, 8080)
     }
 
     func testAcceptConnectDefaultsToRootPathWhenURIHasNone() async throws {
-        let transport = FakeHTTPProxyTransport(clientText: "GET http://example.com HTTP/1.1\r\nHost: example.com\r\n\r\n")
+        let transport = InMemoryClientTransport(clientText: "GET http://example.com HTTP/1.1\r\nHost: example.com\r\n\r\n")
         let request = try await HTTPProxyServer.acceptConnect(over: transport)
         let replayed = String(decoding: request.replayToOutbound, as: UTF8.self)
         XCTAssertTrue(replayed.hasPrefix("GET / HTTP/1.1\r\n"), "got: \(replayed)")
     }
 
     func testAcceptConnectStripsProxyAddressedHeaders() async throws {
-        let transport = FakeHTTPProxyTransport(
+        let transport = InMemoryClientTransport(
             clientText: "GET http://example.com/ HTTP/1.1\r\nHost: example.com\r\nProxy-Connection: keep-alive\r\nProxy-Authorization: Basic abc123\r\nAccept: */*\r\n\r\n"
         )
         let request = try await HTTPProxyServer.acceptConnect(over: transport)
@@ -85,7 +85,7 @@ final class HTTPProxyServerTests: XCTestCase {
     // MARK: - Errors
 
     func testAcceptConnectRejectsMalformedRequestLine() async throws {
-        let transport = FakeHTTPProxyTransport(clientText: "GARBAGE\r\n\r\n")
+        let transport = InMemoryClientTransport(clientText: "GARBAGE\r\n\r\n")
         do {
             _ = try await HTTPProxyServer.acceptConnect(over: transport)
             XCTFail("expected error")
@@ -98,7 +98,7 @@ final class HTTPProxyServerTests: XCTestCase {
         // A client that mistakes this proxy for an origin server (no
         // "http://host" prefix) -- real proxies never see this from a
         // correctly-configured client, but it must fail cleanly, not crash.
-        let transport = FakeHTTPProxyTransport(clientText: "GET /just-a-path HTTP/1.1\r\nHost: example.com\r\n\r\n")
+        let transport = InMemoryClientTransport(clientText: "GET /just-a-path HTTP/1.1\r\nHost: example.com\r\n\r\n")
         do {
             _ = try await HTTPProxyServer.acceptConnect(over: transport)
             XCTFail("expected error")
@@ -108,7 +108,7 @@ final class HTTPProxyServerTests: XCTestCase {
     }
 
     func testAcceptConnectRejectsNonHTTPScheme() async throws {
-        let transport = FakeHTTPProxyTransport(clientText: "GET ftp://example.com/ HTTP/1.1\r\n\r\n")
+        let transport = InMemoryClientTransport(clientText: "GET ftp://example.com/ HTTP/1.1\r\n\r\n")
         do {
             _ = try await HTTPProxyServer.acceptConnect(over: transport)
             XCTFail("expected error")

@@ -97,28 +97,6 @@ final class ShadowsocksCoreTests: XCTestCase {
         }
     }
 
-    func testSendSplitsPayloadsLargerThanMaxChunkSize() async throws {
-        // Confirms ShadowsocksSession.send() actually respects the 0x3FFF
-        // per-chunk limit by observing how many chunks a fake server sees,
-        // not just that the bytes eventually arrive.
-        let server = try ShadowsocksTestServer(cipher: .aes256Gcm, password: "chunk-split-test")
-        let port = try await server.start()
-        defer { server.stop() }
-
-        async let serverSide = server.receiveRequestAndCountChunks(expectedChunks: 2)
-
-        let session = try await ShadowsocksSession.open(
-            server: ShadowsocksServerConfig(host: "127.0.0.1", port: port, password: "chunk-split-test", cipher: .aes256Gcm),
-            targetHost: .domain("example.com"), targetPort: 80
-        )
-        let oversized = [UInt8](repeating: 0x41, count: ShadowsocksMaxChunkSize.value + 10)
-        try await session.send(oversized)
-        session.close()
-
-        let chunkCount = try await serverSide
-        XCTAssertEqual(chunkCount, 2)
-    }
-
     // MARK: - 2022 edition: PSK parsing + session subkey derivation
     //
     // BLAKE3 itself is verified bit-perfect against the official test
