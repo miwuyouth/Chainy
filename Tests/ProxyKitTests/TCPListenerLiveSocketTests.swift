@@ -125,12 +125,21 @@ final class TCPListenerLiveSocketTests: XCTestCase {
         let port = try XCTUnwrap(listener.port)
         listener.cancel()
 
-        let client = TCPConn(host: "127.0.0.1", port: port)
-        do {
-            try await client.connect(timeout: 3)
-            XCTFail("expected the dial to fail against a cancelled listener")
-        } catch {
-            // expected -- connection refused (or the timeout guard, on a slow CI box)
+        // NWListener cancellation is asynchronous. A connection attempted in
+        // the same run-loop turn can still reach the old listening socket, so
+        // wait for cancellation to take effect instead of asserting an
+        // immediate kernel-level close.
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline {
+            let client = TCPConn(host: "127.0.0.1", port: port)
+            do {
+                try await client.connect(timeout: 0.2)
+                client.close()
+                try await Task.sleep(nanoseconds: 10_000_000)
+            } catch {
+                return
+            }
         }
+        XCTFail("cancelled listener kept accepting connections for 3 seconds")
     }
 }
