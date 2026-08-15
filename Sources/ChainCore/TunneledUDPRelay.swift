@@ -23,16 +23,10 @@
 //      the whole association ends (`close()`), same scope decision as
 //      `ShadowsocksUDPRelay`.
 //
-// The `[UInt16 BE length][datagram]` chunk framing below is this client's
-// own choice for where a datagram boundary lives inside VMess's/VLESS's
-// body once `VMessSession`/VLESS's session type has already stripped away
-// their own wire-level framing and handed back a plain byte pipe (see
-// `VMessCore`'s AEAD body chunking and `VLESSCore`'s own doc comment) --
-// confirmed self-consistent (this file's
-// own tests round-trip against itself and against fake servers speaking the
-// same convention), but *not* yet confirmed against how a real VMess server
-// expects its UDP-mode body framed, unlike VLESS's, which matches its
-// published spec. Flagged here rather than silently assumed correct.
+// VLESS uses `[UInt16 BE length][datagram]` inside its otherwise-plain body.
+// VMess does not add that inner prefix: its existing authenticated body-chunk
+// boundary *is* the UDP datagram boundary. Adding another length here sends
+// those two bytes to the destination as payload (e.g. corrupting DNS).
 
 import Foundation
 import os
@@ -112,6 +106,7 @@ enum LengthPrefixedDatagram {
 // MARK: - TunneledUDPRelay
 
 public final class TunneledUDPRelay: UDPRelay {
+    private enum DatagramFraming { case vmessBodyChunk, lengthPrefixed }
     private struct TargetKey: Hashable { let host: String; let port: UInt16 }
     private struct Tunnel {
         let session: any ProxyTransport
@@ -121,6 +116,7 @@ public final class TunneledUDPRelay: UDPRelay {
     private let hops: [ProxyHop]
     private let connectTimeout: TimeInterval?
     private let logID: String?
+    private let framing: DatagramFraming
     /// Guards `tunnels` against `close()` racing `send()`/`pumpReplies` --
     /// `LocalProxyServer`'s task group calls `close()` from a different task
     /// than the one looping `send()`, the instant any one of its three
@@ -129,10 +125,11 @@ public final class TunneledUDPRelay: UDPRelay {
     private let incoming: AsyncStream<(fromHost: String, fromPort: UInt16, payload: [UInt8])>
     private let incomingContinuation: AsyncStream<(fromHost: String, fromPort: UInt16, payload: [UInt8])>.Continuation
 
-    private init(hops: [ProxyHop], connectTimeout: TimeInterval?, logID: String?) {
+    private init(hops: [ProxyHop], connectTimeout: TimeInterval?, logID: String?, framing: DatagramFraming) {
         self.hops = hops
         self.connectTimeout = connectTimeout
         self.logID = logID
+        self.framing = framing
         var continuation: AsyncStream<(fromHost: String, fromPort: UInt16, payload: [UInt8])>.Continuation!
         incoming = AsyncStream { continuation = $0 }
         incomingContinuation = continuation
@@ -143,8 +140,10 @@ public final class TunneledUDPRelay: UDPRelay {
     public static func open(hops: [ProxyHop], connectTimeout: TimeInterval? = 10, logID: String? = nil) throws -> TunneledUDPRelay {
         guard let last = hops.last else { throw ProxyChainError.emptyChain }
         switch last.protocolConfig {
-        case .vmess, .vless:
-            return TunneledUDPRelay(hops: hops, connectTimeout: connectTimeout, logID: logID)
+        case .vmess:
+            return TunneledUDPRelay(hops: hops, connectTimeout: connectTimeout, logID: logID, framing: .vmessBodyChunk)
+        case .vless:
+            return TunneledUDPRelay(hops: hops, connectTimeout: connectTimeout, logID: logID, framing: .lengthPrefixed)
         default:
             throw ProxyChainError.udpUnsupportedLastHop(protocolName: last.protocolConfig.logName)
         }
@@ -172,7 +171,7 @@ public final class TunneledUDPRelay: UDPRelay {
         let key = TargetKey(host: targetHost, port: targetPort)
         let existing = tunnels.withLock { $0[key]?.session }
         if let existing {
-            try await LengthPrefixedDatagram.send(payload, over: existing, timeout: timeout)
+            try await sendDatagram(payload, over: existing, timeout: timeout)
             return
         }
 
@@ -181,12 +180,21 @@ public final class TunneledUDPRelay: UDPRelay {
         // same not-yet-open target concurrently, so this doesn't need
         // to handle a duplicate-dial race for the same key.
         let session = try await dial(targetHost: targetHost, targetPort: targetPort)
-        try await LengthPrefixedDatagram.send(payload, over: session, timeout: timeout)
+        try await sendDatagram(payload, over: session, timeout: timeout)
         let task = Task { [weak self] in
             guard let self else { return }
             await self.pumpReplies(key: key, session: session)
         }
         tunnels.withLock { $0[key] = Tunnel(session: session, task: task) }
+    }
+
+    private func sendDatagram(_ payload: [UInt8], over session: any ProxyTransport, timeout: TimeInterval?) async throws {
+        switch framing {
+        case .vmessBodyChunk:
+            try await session.send(payload, timeout: timeout)
+        case .lengthPrefixed:
+            try await LengthPrefixedDatagram.send(payload, over: session, timeout: timeout)
+        }
     }
 
     /// Pulls the next datagram off whichever per-target tunnel produced one
@@ -330,7 +338,14 @@ public final class TunneledUDPRelay: UDPRelay {
     private func pumpReplies(key: TargetKey, session: any ProxyTransport) async {
         while true {
             do {
-                let payload = try await LengthPrefixedDatagram.receiveOne(over: session, timeout: nil)
+                let payload: [UInt8]
+                switch framing {
+                case .vmessBodyChunk:
+                    payload = try await session.readAvailable(timeout: nil)
+                    if payload.isEmpty { return }
+                case .lengthPrefixed:
+                    payload = try await LengthPrefixedDatagram.receiveOne(over: session, timeout: nil)
+                }
                 incomingContinuation.yield((fromHost: key.host, fromPort: key.port, payload: payload))
             } catch {
                 return
