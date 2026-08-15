@@ -388,7 +388,7 @@ final class LocalProxyServer {
             if !replayToOutbound.isEmpty {
                 try await outbound.send(replayToOutbound, timeout: 10)
             }
-            await pumpBothDirections(local: localConn, outbound: outbound, counter: counter, stats: stats)
+            await pumpBothDirections(local: localConn, outbound: outbound, counter: counter, stats: stats, shortID: shortID)
             proxyLog(.debug, "Proxy", "[\(shortID)] Connection closed")
         } catch {
             // Local socket never completed a valid handshake, or the chain
@@ -564,30 +564,56 @@ final class LocalProxyServer {
     /// Auto-Optimize rotation cycle and a relayed connection dying mid
     /// nested-TLS-handshake. This function touches no `@MainActor` instance
     /// state (only its own parameters), so moving it off MainActor is safe.
-    private nonisolated static func pumpBothDirections(local: TCPConn, outbound: any ProxyTransport, counter: RelayByteCounter, stats: ConnectionStats) async {
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask { await pump(from: local, to: outbound, record: { counter.addUpload($0); stats.addUpload($0) }) }
-            group.addTask { await pump(from: outbound, to: local, record: { counter.addDownload($0); stats.addDownload($0) }) }
-            _ = await group.next()
+    private struct PumpOutcome: Sendable {
+        let direction: String
+        let bytes: UInt64
+        let reason: String
+    }
+
+    private nonisolated static func pumpBothDirections(
+        local: TCPConn, outbound: any ProxyTransport, counter: RelayByteCounter,
+        stats: ConnectionStats, shortID: Substring
+    ) async {
+        await withTaskGroup(of: PumpOutcome.self) { group in
+            group.addTask {
+                await pump(from: local, to: outbound, direction: "client->chain", record: { counter.addUpload($0); stats.addUpload($0) })
+            }
+            group.addTask {
+                await pump(from: outbound, to: local, direction: "chain->client", record: { counter.addDownload($0); stats.addDownload($0) })
+            }
+            if let first = await group.next() {
+                // Only the first-ended direction is diagnostic. Closing both
+                // transports below deliberately makes the other pump fail too,
+                // so logging that induced error would obscure the root event.
+                proxyLog(
+                    first.reason == "EOF" ? .debug : .warn, "Proxy",
+                    "[\(shortID)] Relay ended first on \(first.direction) after \(first.bytes) byte(s): \(first.reason)"
+                )
+            }
             // One direction ended (EOF/error). Proactively close both sides
             // so the other direction's in-flight/next `readAvailable` call
             // unblocks instead of leaking a task parked forever -- Task
             // cancellation alone wouldn't do this (see `stop()`'s comment).
             local.close()
             outbound.close()
-            await group.next()
+            _ = await group.next()
         }
     }
 
-    private nonisolated static func pump(from source: any ByteStreamAvailableReader, to sink: any ByteStreamSink, record: @Sendable (Int) -> Void) async {
+    private nonisolated static func pump(
+        from source: any ByteStreamAvailableReader, to sink: any ByteStreamSink,
+        direction: String, record: @Sendable (Int) -> Void
+    ) async -> PumpOutcome {
+        var total: UInt64 = 0
         while true {
             do {
                 let chunk = try await source.readAvailable(timeout: nil)
-                if chunk.isEmpty { return }
+                if chunk.isEmpty { return PumpOutcome(direction: direction, bytes: total, reason: "EOF") }
                 record(chunk.count)
+                total += UInt64(chunk.count)
                 try await sink.send(chunk, timeout: nil)
             } catch {
-                return
+                return PumpOutcome(direction: direction, bytes: total, reason: String(describing: error))
             }
         }
     }
