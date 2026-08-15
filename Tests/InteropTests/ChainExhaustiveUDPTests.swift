@@ -7,6 +7,8 @@
 //   - every hop Shadowsocks               -> ShadowsocksUDPRelay (real relay)
 //   - last hop VMess/VLESS/Trojan         -> Tunneled/TrojanUDPRelay (real relay,
 //                                             any protocol mix before it)
+//   - last hop SOCKS5                     -> SOCKS5UDPRelay when its prefix can
+//                                             itself carry UDP (single-hop included)
 //   - anything else                       -> refused (ProxyChainError.udpUnsupportedLastHop)
 //
 // So each combination either gets a real end-to-end UDP relay against the
@@ -14,13 +16,6 @@
 // reason -- both are "the real dispatch behavior for this exact shape",
 // exhaustively.
 //
-// Known risk (see project memory / `TunneledUDPRelay.swift`'s own doc
-// comment): VMess's UDP body framing was a client-side invention never
-// confirmed against a real VMess server. Chains whose last hop is VMess are
-// the first real test of that against an actual third-party implementation,
-// and may fail -- if so, that confirms the suspected gap rather than
-// indicating a broken test; it should be reported, not papered over.
-
 import XCTest
 import ChainCore
 import ProxyKit
@@ -34,8 +29,14 @@ final class ChainExhaustiveUDPTests: XCTestCase {
         if hops.allSatisfy({ $0 == .shadowsocks }) { return true }
         switch hops.last! {
         case .vmess, .vless, .trojan: return true
-        case .socks5, .http, .shadowsocks: return false
+        case .socks5: return hops.count == 1 || expectsRealRelay(Array(hops.dropLast()))
+        case .http, .shadowsocks: return false
         }
+    }
+
+    private func refusedProtocolName(_ hops: [CanonicalProtocol]) -> String {
+        if hops.last == .socks5, hops.count > 1 { return refusedProtocolName(Array(hops.dropLast())) }
+        return hops.last!.chainCoreLogName
     }
 
     /// One real-relay attempt: opens a fresh relay, sends one payload,
@@ -79,7 +80,7 @@ final class ChainExhaustiveUDPTests: XCTestCase {
                 _ = try await ProxyChain.openUDPRelay(hops: proxyHops, connectTimeout: 10)
                 XCTFail("chain [\(label)] expected UDP to be refused (last hop \(hops.last!.rawValue)) but openUDPRelay succeeded")
             } catch ProxyChainError.udpUnsupportedLastHop(let protocolName) {
-                XCTAssertEqual(protocolName, hops.last!.chainCoreLogName, "chain [\(label)] refused for the wrong hop's name")
+                XCTAssertEqual(protocolName, refusedProtocolName(hops), "chain [\(label)] refused for the wrong unsupported prefix hop")
             } catch {
                 XCTFail("chain [\(label)] expected udpUnsupportedLastHop but got: \(error)")
             }

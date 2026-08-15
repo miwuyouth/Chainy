@@ -103,9 +103,8 @@ public enum ProxyChainError: Error, Equatable {
     /// mid-chain protocol switch yet (see that type's own doc comment).
     case udpUnsupportedHop(index: Int, protocolName: String)
     /// `ProxyChain.openUDPRelay` needs the *last* hop specifically to
-    /// support UDP (VMess/VLESS, or an all-Shadowsocks chain, which takes
-    /// priority when it applies) -- see `TunneledUDPRelay`'s own doc comment
-    /// on why only the terminal hop matters for that mechanism.
+    /// support UDP (VMess/VLESS/Trojan/SOCKS5, or an all-Shadowsocks chain,
+    /// which takes priority when it applies).
     case udpUnsupportedLastHop(protocolName: String)
     /// A hop *is* Shadowsocks (so it passes `udpUnsupportedHop`'s check),
     /// but its cipher is a 2022-edition one, whose UDP packet format isn't
@@ -322,8 +321,8 @@ public enum ProxyChain {
 /// Restricted to chains where *every* hop is `.shadowsocks` -- `open` throws
 /// `ProxyChainError.udpUnsupportedHop` for anything else (mirroring
 /// `SOCKS5Server.acceptRequest`'s own command-not-supported handling one
-/// layer up, in `LocalProxyServer`). VMess/VLESS/Trojan/HTTP UDP relay isn't
-/// implemented yet; a mixed chain is refused rather than silently only
+/// layer up, in `LocalProxyServer`). A mixed chain ending in Shadowsocks is
+/// refused rather than silently only
 /// tunneling through the Shadowsocks prefix of it.
 public final class ShadowsocksUDPRelay {
     /// One validated hop: its Shadowsocks credentials plus where it is --

@@ -199,7 +199,7 @@ final class RepresentativeMatrixReportTests: XCTestCase {
             MatrixCase(id: "TC27", description: "udp: last hop vmess (real relay)", hops: [CanonicalProtocol.socks5.hop(), CanonicalProtocol.vmess.hop()], kind: .udpRelay),
             MatrixCase(id: "TC28", description: "udp: last hop vless (real relay)", hops: [CanonicalProtocol.http.hop(), CanonicalProtocol.vless.hop()], kind: .udpRelay),
             MatrixCase(id: "TC29", description: "udp: last hop trojan (real relay)", hops: [CanonicalProtocol.shadowsocks.hop(), CanonicalProtocol.trojan.hop()], kind: .udpRelay),
-            MatrixCase(id: "TC30", description: "udp: last hop socks5 (expected refusal)", hops: [CanonicalProtocol.vmess.hop(), CanonicalProtocol.socks5.hop()], kind: .udpRefused(expectedProtocolName: CanonicalProtocol.socks5.chainCoreLogName)),
+            MatrixCase(id: "TC30", description: "udp: last hop socks5 (prefix carries relay)", hops: [CanonicalProtocol.vmess.hop(), CanonicalProtocol.socks5.hop()], kind: .udpRelay),
         ]
     }
 

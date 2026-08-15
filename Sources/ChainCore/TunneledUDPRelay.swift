@@ -31,6 +31,7 @@
 import Foundation
 import os
 import ProxyKit
+import SOCKS5Core
 import VMessCore
 import VLESSCore
 import TrojanCore
@@ -57,7 +58,8 @@ extension ProxyChain {
     /// it's the more capable case -- every hop actually relays UDP, not just
     /// the last one), else a chain whose *last* hop is VMess/VLESS
     /// (`TunneledUDPRelay`, any protocol mix before it) or Trojan
-    /// (`TrojanUDPRelay`, same "any protocol mix before it" rule), else
+    /// (`TrojanUDPRelay`, same "any protocol mix before it" rule), SOCKS5
+    /// (`SOCKS5UDPRelay`, whose UDP packets traverse the prefix relay), else
     /// refuses with `ProxyChainError.udpUnsupportedLastHop`.
     public static func openUDPRelay(hops: [ProxyHop], connectTimeout: TimeInterval? = 10, logID: String? = nil) async throws -> any UDPRelay {
         guard let last = hops.last else { throw ProxyChainError.emptyChain }
@@ -75,6 +77,8 @@ extension ProxyChain {
             return try TunneledUDPRelay.open(hops: hops, connectTimeout: connectTimeout, logID: logID)
         case .trojan:
             return try await TrojanUDPRelay.open(hops: hops, connectTimeout: connectTimeout, logID: logID)
+        case .socks5:
+            return try await SOCKS5UDPRelay.open(hops: hops, connectTimeout: connectTimeout, logID: logID)
         default:
             let logPrefix = logID.map { "[\($0)] " } ?? ""
             proxyLog(.warn, "Chain", "\(logPrefix)UDP relay refused: last hop (\(last.protocolConfig.logName)) does not support UDP")

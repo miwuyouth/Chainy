@@ -166,4 +166,34 @@ final class SOCKS5CoreTests: XCTestCase {
         XCTAssertEqual(SOCKS5ReplyCode.name(forReplyCode: 0x00), "unassigned(0x00)") // 0x00 is "succeeded", not a failure code
         XCTAssertEqual(SOCKS5ReplyCode.name(forReplyCode: 0x7F), "unassigned(0x7f)")
     }
+
+    // MARK: - UDP ASSOCIATE request / reply
+
+    func testAssociateRequestUsesUnspecifiedClientEndpointAndDecodesRelay() async throws {
+        let transport = FakeSOCKS5Transport(serverBytes: [0x05, 0x00, 0x00, 0x01, 127, 0, 0, 1, 0x46, 0xB5])
+        let endpoint = try await sendAssociateRequestAndAwaitReply(transport: transport, timeout: nil)
+        XCTAssertEqual(transport.sent, [[0x05, 0x03, 0x00, 0x01, 0, 0, 0, 0, 0, 0]])
+        XCTAssertEqual(endpoint.address, .ipv4([127, 0, 0, 1]))
+        XCTAssertEqual(endpoint.port, 18101)
+    }
+
+    func testAssociateRequestFailureCarriesReplyCode() async throws {
+        let transport = FakeSOCKS5Transport(serverBytes: [0x05, 0x07, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
+        do {
+            _ = try await sendAssociateRequestAndAwaitReply(transport: transport, timeout: nil)
+            XCTFail("expected error")
+        } catch SOCKS5Error.requestFailed(let code) {
+            XCTAssertEqual(code, SOCKS5ReplyCode.commandNotSupported.rawValue)
+        }
+    }
+
+    func testAssociateRejectsZeroRelayPort() async throws {
+        let transport = FakeSOCKS5Transport(serverBytes: [0x05, 0x00, 0x00, 0x01, 127, 0, 0, 1, 0, 0])
+        do {
+            _ = try await sendAssociateRequestAndAwaitReply(transport: transport, timeout: nil)
+            XCTFail("expected malformed reply")
+        } catch SOCKS5Error.malformedReply {
+            // expected
+        }
+    }
 }

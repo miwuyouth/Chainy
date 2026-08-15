@@ -79,7 +79,7 @@ Chainy 在本机运行，可将 VMess、Trojan、Shadowsocks、VLESS、SOCKS5 �
 | VLESS | ✓ | WS 和可选 TLS | ✓ |
 | Trojan | ✓ | WS 和可选 TLS | ✓ |
 | Shadowsocks | ✓ | — | 仅限整条线路全部为 Shadowsocks；2022 cipher 仅支持 TCP |
-| SOCKS5 | ✓ | — | 暂不支持作为 UDP 末跳 |
+| SOCKS5 | ✓ | — | ✓；前序 Chain 必须能够承载 UDP |
 | HTTP | ✓ | — | 不支持 |
 
 支持导入 Clash YAML，以及 `ss://`、`vmess://`、`trojan://`、`vless://` 和 `http://` 链接。REALITY、XTLS Vision、gRPC、HTTP/2、QUIC、Shadowsocks 插件、Hysteria、TUIC 和 SSR 等不受支持的内容会在导入时明确报告，而不是静默接受。

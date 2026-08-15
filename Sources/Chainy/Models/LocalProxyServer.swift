@@ -407,8 +407,8 @@ final class LocalProxyServer {
 
     /// Serves one SOCKS5 UDP ASSOCIATE request end-to-end: opens whichever
     /// UDP relay mechanism `ChainCore.ProxyChain.openUDPRelay` picks for the
-    /// current chain (an all-Shadowsocks chain, or one whose last hop is
-    /// VMess/VLESS/Trojan -- refusing with a SOCKS5 command-not-supported
+    /// current chain (an all-Shadowsocks chain, or a supported VMess/VLESS/
+    /// Trojan/SOCKS5 terminal path -- refusing with a SOCKS5 command-not-supported
     /// reply otherwise; see that dispatcher's own doc comment), binds a local
     /// `UDPListener` for the one client that asked, replies telling it that
     /// address, then relays datagrams both ways until either the relay's own

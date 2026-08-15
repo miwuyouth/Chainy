@@ -84,7 +84,7 @@ All listed protocols can be used as TCP hops. Additional transport and terminal-
 | VLESS | ✓ | WS and optional TLS | ✓ |
 | Trojan | ✓ | WS and optional TLS | ✓ |
 | Shadowsocks | ✓ | — | Only when every hop is Shadowsocks; 2022 ciphers are TCP-only |
-| SOCKS5 | ✓ | — | Not currently supported as the terminal UDP hop |
+| SOCKS5 | ✓ | — | ✓ when the preceding chain can carry UDP |
 | HTTP | ✓ | — | Not supported |
 
 Supported imports include Clash YAML and `ss://`, `vmess://`, `trojan://`, `vless://`, and `http://` links. Unsupported entries—such as REALITY, XTLS Vision, gRPC, HTTP/2, QUIC, Shadowsocks plugins, Hysteria, TUIC, and SSR—are reported during import instead of being silently accepted.

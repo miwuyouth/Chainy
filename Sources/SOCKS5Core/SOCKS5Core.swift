@@ -17,10 +17,9 @@
 // where the server silently downgrades to a method the caller didn't ask for.
 //
 // Only CONNECT (0x01) and UDP ASSOCIATE (0x03) are implemented -- no BIND.
-// ASSOCIATE itself is just the datagram header framing (`socks5UDPDatagram`/
-// `parseSOCKS5UDPDatagram` below): this module has no opinion on what carries
-// the actual UDP relay (that's `SOCKS5Server`'s accept-side job, and
-// ChainCore's `ShadowsocksUDPRelay` on the outbound side).
+// `SOCKS5UDPAssociation` negotiates and owns ASSOCIATE's TCP control channel;
+// the datagram socket or an earlier proxy chain that carries the returned
+// relay endpoint remains ChainCore's responsibility.
 
 import Foundation
 import ProxyKit
@@ -176,6 +175,47 @@ func sendConnectRequestAndAwaitReply(transport: SOCKS5Transport, target: ProxyAd
     let boundAddress = try await readSOCKS5Address(atyp: head[3], transport: transport, timeout: timeout)
     _ = try await transport.readExactly(2, timeout: timeout) // BND.PORT, unused
     return boundAddress
+}
+
+/// Sends UDP ASSOCIATE with the conventional `0.0.0.0:0` client endpoint and
+/// returns the server-advertised UDP relay endpoint. The TCP transport must
+/// remain open for the lifetime of the association.
+func sendAssociateRequestAndAwaitReply(transport: SOCKS5Transport, timeout: TimeInterval?) async throws -> (address: ProxyAddress, port: UInt16) {
+    try await transport.send([SOCKS5Version.value, SOCKS5Command.associate, 0x00, SOCKS5AddressType.ipv4, 0, 0, 0, 0, 0, 0], timeout: timeout)
+
+    let head = try await transport.readExactly(4, timeout: timeout)
+    guard head[0] == SOCKS5Version.value else { throw SOCKS5Error.unsupportedServerVersion(head[0]) }
+    guard head[1] == 0x00 else { throw SOCKS5Error.requestFailed(replyCode: head[1]) }
+    let address = try await readSOCKS5Address(atyp: head[3], transport: transport, timeout: timeout)
+    let portBytes = try await transport.readExactly(2, timeout: timeout)
+    let port = UInt16(portBytes[0]) << 8 | UInt16(portBytes[1])
+    guard port != 0 else { throw SOCKS5Error.malformedReply }
+    return (address, port)
+}
+
+/// A negotiated SOCKS5 UDP ASSOCIATE control channel. Closing this object
+/// invalidates the server-side UDP association as required by RFC 1928.
+public final class SOCKS5UDPAssociation {
+    private let control: any ProxyTransport
+    public let relayAddress: ProxyAddress
+    public let relayPort: UInt16
+
+    private init(control: any ProxyTransport, relayAddress: ProxyAddress, relayPort: UInt16) {
+        self.control = control
+        self.relayAddress = relayAddress
+        self.relayPort = relayPort
+    }
+
+    public static func open(over transport: any ProxyTransport, auth: SOCKS5Auth, timeout: TimeInterval? = 10) async throws -> SOCKS5UDPAssociation {
+        try await sendGreetingAndSelectMethod(transport: transport, auth: auth, timeout: timeout)
+        if case .usernamePassword(let username, let password) = auth {
+            try await performUsernamePasswordAuth(transport: transport, username: username, password: password, timeout: timeout)
+        }
+        let endpoint = try await sendAssociateRequestAndAwaitReply(transport: transport, timeout: timeout)
+        return SOCKS5UDPAssociation(control: transport, relayAddress: endpoint.address, relayPort: endpoint.port)
+    }
+
+    public func close() { control.close() }
 }
 
 // MARK: - UDP relay (ASSOCIATE) datagram framing

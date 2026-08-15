@@ -6,19 +6,15 @@ import ProxyKit
 /// chain gets `ShadowsocksUDPRelay` (its own physical UDP socket, chained by
 /// nested packets), a chain whose *last* hop is VMess/VLESS gets
 /// `TunneledUDPRelay` (UDP-over-the-existing-TCP-tunnel, dialed lazily per
-/// target), and anything else is refused up front. None of this needs a
+/// target), and unsupported shapes are refused up front. None of the lazy
+/// dispatch cases needs a
 /// reachable server: `ShadowsocksUDPRelay.open` only opens a UDP socket (no
 /// handshake, so "connecting" to an unused local port still succeeds), and
 /// `TunneledUDPRelay.open` doesn't dial anything at all until the first
 /// `send` for a given target -- see each type's own doc comment.
 ///
-/// A last-hop-Trojan chain also dispatches (to `TrojanUDPRelay`), but isn't
-/// covered *here*: unlike the two mechanisms above, `TrojanUDPRelay.open`
-/// dials and completes a real TLS handshake eagerly (one session handles
-/// every destination, so there's no per-target laziness to exploit the way
-/// `TunneledUDPRelay` has) -- see `ChainCoreTrojanUDPRelayLiveSocketTests`
-/// (`Tests/TrojanCoreTests`) for that dispatch, verified against a real
-/// self-signed TLS server instead.
+/// Trojan and SOCKS5 terminal relays are eager and therefore covered by the
+/// real Xray-core InteropTests rather than a no-server dispatch test here.
 final class ProxyChainUDPRelayDispatchTests: XCTestCase {
     func testAllShadowsocksChainDispatchesToShadowsocksUDPRelay() async throws {
         // A real (if silent) local UDP listener stands in for the hop's
@@ -78,16 +74,6 @@ final class ProxyChainUDPRelayDispatchTests: XCTestCase {
             XCTFail("expected udpUnsupportedLastHop")
         } catch ProxyChainError.udpUnsupportedLastHop(let protocolName) {
             XCTAssertEqual(protocolName, "HTTP")
-        }
-    }
-
-    func testLastHopSOCKS5IsRefused() async throws {
-        let hops = [ProxyHop(host: "socks.example", port: 1080, protocolConfig: .socks5(auth: .none))]
-        do {
-            _ = try await ProxyChain.openUDPRelay(hops: hops)
-            XCTFail("expected udpUnsupportedLastHop")
-        } catch ProxyChainError.udpUnsupportedLastHop(let protocolName) {
-            XCTAssertEqual(protocolName, "SOCKS5")
         }
     }
 

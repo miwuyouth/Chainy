@@ -223,9 +223,9 @@ public struct ChainQualityScore: Equatable {
     public let handshakeMs: Int?
     public let mbps: Double?
     /// Whether this chain's hop protocols can carry UDP at all, per
-    /// `ProxyChain.openUDPRelay`'s dispatch (Shadowsocks-all/VMess/VLESS/
-    /// Trojan last hop) -- `nil` means never tested, `false` means the
-    /// chain shape itself refuses UDP (e.g. HTTP or SOCKS5 as the last hop),
+    /// `ProxyChain.openUDPRelay`'s dispatch (Shadowsocks-all or a supported
+    /// VMess/VLESS/Trojan/SOCKS5 terminal path) -- `nil` means never tested,
+    /// `false` means the chain shape itself refuses UDP (e.g. HTTP as the last hop),
     /// `true` means the protocol allows it, independent of whether
     /// `udpLatencyMs` below actually got a reply.
     public let udpSupported: Bool?
@@ -1216,7 +1216,7 @@ public final class AppStore: ObservableObject {
     }
 
     /// Dials this chain's UDP relay (`ProxyChain.openUDPRelay`'s existing
-    /// Shadowsocks-all/VMess/VLESS/Trojan-last-hop dispatch) and times a DNS
+    /// Shadowsocks-all/VMess/VLESS/Trojan/SOCKS5-terminal dispatch) and times a DNS
     /// round trip through it, same shared-by-manual-test-and-Auto-Optimize
     /// role as `performLatencyProbe`. Throws `ProxyChainError.udpUnsupportedHop`/
     /// `udpUnsupportedLastHop` before dialing anything if the chain's own hop
