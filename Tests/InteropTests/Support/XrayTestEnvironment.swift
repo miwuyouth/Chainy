@@ -275,6 +275,13 @@ final class XrayTestEnvironment: @unchecked Sendable {
         for port in Ports.all {
             try Self.waitUntilPortOpens(port: port, timeout: 10)
         }
+
+        // Make the external-server provenance visible in XCTest output.
+        // A green test alone only proves that *something* answered on the
+        // fixture ports; this banner records the exact executable/version,
+        // live child PID, generated config, and ports used by this run.
+        let version = Self.toolVersion(executablePath: xrayPath)
+        print("SERVER_EVIDENCE|||engine=xray-core|||path=\(xrayPath)|||version=\(version)|||pid=\(process.processIdentifier)|||config=\(configPath)|||ports=\(Ports.all.map(String.init).joined(separator: ","))")
     }
 
     deinit {
@@ -326,6 +333,19 @@ final class XrayTestEnvironment: @unchecked Sendable {
         guard process.terminationStatus == 0 else {
             throw XrayTestEnvironmentError.processFailed("openssl exited \(process.terminationStatus)")
         }
+    }
+
+    private static func toolVersion(executablePath: String) -> String {
+        let versionProcess = Process()
+        versionProcess.executableURL = URL(fileURLWithPath: executablePath)
+        versionProcess.arguments = ["version"]
+        let pipe = Pipe()
+        versionProcess.standardOutput = pipe
+        versionProcess.standardError = pipe
+        guard (try? versionProcess.run()) != nil else { return "unknown" }
+        versionProcess.waitUntilExit()
+        return String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            .split(whereSeparator: \.isNewline).first.map(String.init) ?? "unknown"
     }
 
     // MARK: - xray JSON config
