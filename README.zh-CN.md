@@ -75,7 +75,7 @@ Chainy 在本机运行，可将 VMess、Trojan、Shadowsocks、VLESS、SOCKS5 �
 
 | 协议 | TCP 节点 | WebSocket / TLS | 作为 UDP 末跳 |
 |---|:---:|:---:|---|
-| VMess | ✓ | WS 和可选 TLS | 实验性；尚未与真实 VMess 服务端验证分帧兼容性 |
+| VMess | ✓ | WS 和可选 TLS | ✓；已通过真实 Xray-core 验证 |
 | VLESS | ✓ | WS 和可选 TLS | ✓ |
 | Trojan | ✓ | WS 和可选 TLS | ✓ |
 | Shadowsocks | ✓ | — | 仅限整条线路全部为 Shadowsocks；2022 cipher 仅支持 TCP |

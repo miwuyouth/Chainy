@@ -80,7 +80,7 @@ All listed protocols can be used as TCP hops. Additional transport and terminal-
 
 | Protocol | TCP hop | WebSocket / TLS | UDP as terminal hop |
 |---|:---:|:---:|---|
-| VMess | ✓ | WS and optional TLS | Experimental; framing is not yet verified against a real VMess server |
+| VMess | ✓ | WS and optional TLS | ✓; verified against real Xray-core |
 | VLESS | ✓ | WS and optional TLS | ✓ |
 | Trojan | ✓ | WS and optional TLS | ✓ |
 | Shadowsocks | ✓ | — | Only when every hop is Shadowsocks; 2022 ciphers are TCP-only |
