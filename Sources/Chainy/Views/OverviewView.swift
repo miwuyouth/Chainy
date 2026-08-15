@@ -83,10 +83,7 @@ struct OverviewView: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     if store.isProxyRunning {
-                        HStack(spacing: 10) {
-                            proxyAddressRow(label: "SOCKS5")
-                            proxyAddressRow(label: "HTTP")
-                        }
+                        proxyAddressRow(label: "SOCKS5 + HTTP")
                     }
                 }
 
