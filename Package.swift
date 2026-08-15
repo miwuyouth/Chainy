@@ -50,6 +50,7 @@ let package = Package(
         .library(name: "VLESSCore", targets: ["VLESSCore"]),
         .library(name: "ChainCore", targets: ["ChainCore"]),
         .library(name: "SubscriptionCore", targets: ["SubscriptionCore"]),
+        .executable(name: "chainy-diagnose", targets: ["ChainDiagnosticCLI"]),
     ],
     targets: [
         .target(name: "ProxyKit"),
@@ -66,6 +67,7 @@ let package = Package(
         .executableTarget(name: "VLESSDemoCLI", dependencies: ["VLESSCore", "ProxyKit"]),
         .target(name: "ChainCore", dependencies: ["ProxyKit", "SOCKS5Core", "ShadowsocksCore", "VMessCore", "TrojanCore", "VLESSCore", "HTTPProxyCore"]),
         .executableTarget(name: "ChainDemoCLI", dependencies: ["ChainCore", "ProxyKit", "SOCKS5Core", "ShadowsocksCore", "VMessCore", "TrojanCore"]),
+        .executableTarget(name: "ChainDiagnosticCLI", dependencies: ["ChainCore", "ProxyKit", "SOCKS5Core"]),
         .target(name: "SubscriptionCore", dependencies: ["ChainCore", "SOCKS5Core", "ShadowsocksCore", "HTTPProxyCore"]),
         .executableTarget(name: "Chainy", dependencies: ["ChainCore", "SubscriptionCore", "ProxyKit", "SOCKS5Core", "HTTPProxyCore"], resources: [.process("Resources")]),
         .testTarget(name: "ProxyKitTests", dependencies: ["ProxyKit"]),

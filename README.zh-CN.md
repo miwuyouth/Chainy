@@ -100,6 +100,33 @@ open Chainy.xcodeproj
 
 在 Xcode 中选择 `Chainy` scheme 后运行。Debug 构建使用 ad-hoc 签名，不需要付费开发者账号。测试和开发流程请参阅 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
+### 间歇性连接诊断
+
+`chainy-diagnose` 会只读加载 Chainy 当前的 `AppData.json`，从中选择激活的 Chain，并为目标站点和对照站点反复创建全新连接：
+
+```bash
+swift run chainy-diagnose http \
+  --count 0 \
+  --burst 16 \
+  --compare-local 1080 \
+  --output ~/Desktop/chainy-diagnose.jsonl
+```
+
+默认每轮并发访问 Google、Cloudflare、Apple、Microsoft 和 GitHub，并额外瞬间发起 16 条分散到这些站点的独立连接，以模拟浏览器加载页面资源时的连接突发；任意请求失败后会立即用全新连接复测同一地址。`--burst N` 可调整压力（`0` 关闭，最高 `200`）。可多次传入 `--site URL` 自定义站点矩阵，或通过 `--sites-file PATH` 每行提供一个 URL。`--count 0` 表示持续运行，按 Control-C 停止。如果 Chainy 本地代理监听在 1080 端口，`--compare-local 1080` 会同时比较直接调用 ChainCore 与经过运行中 Chainy 监听器的结果。输出会标明失败发生在首节点 TCP 连接、代理链握手、目标 TLS、请求发送或等待首个下载字节中的哪个阶段；配置内容和节点凭据不会写入输出。
+
+突发模式覆盖浏览器最相关的“短时间大量 CONNECT/TLS/首字节响应”压力，但它不是完整浏览器引擎：不会执行 JavaScript，也不模拟 HTTP/2 多路复用、HTTP/3 或浏览器缓存。
+
+UDP 转发可使用同一个诊断程序单独测试。默认对四个公共 DNS 各执行三轮查询，也可以重复传入 `--resolver 名称=地址` 自定义目标：
+
+```bash
+swift run chainy-diagnose udp \
+  --passes 3 \
+  --timeout 8 \
+  --output ~/Desktop/chainy-udp-diagnose.jsonl
+```
+
+UDP 输出会分别给出各解析器的成功率。公共 DNS 的 UDP 53 端口可能被本地网络单独屏蔽或限速，因此单个解析器失败不能独立证明代理协议不可用。
+
 ## 隐私、安全与合理使用
 
 Chainy 只是客户端，不提供代理节点或订阅服务。请仅使用你有权访问的节点，并遵守所在地法律及相关服务条款。
