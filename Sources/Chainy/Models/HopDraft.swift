@@ -47,6 +47,7 @@ struct HopDraft {
     var cipher: ShadowsocksCipher = .aes256Gcm
     var uuid: String = UUID().uuidString
     var vmessSecurity: VMessSecurity = .auto
+    var vmessBodyOptions: VMessBodyOptions = .modern
     var sni: String = ""
     var allowInsecure: Bool = false
     /// Whether a `.vmess`/`.vless`/`.trojan` draft wraps the connection in
@@ -79,10 +80,11 @@ struct HopDraft {
             kind = .shadowsocks
             self.password = password
             self.cipher = cipher
-        case .vmess(let uuid, let security, let tls, let sni, let allowInsecure, let wsPath, let wsHost):
+        case .vmess(let uuid, let security, let bodyOptions, let tls, let sni, let allowInsecure, let wsPath, let wsHost):
             kind = .vmess
             self.uuid = uuid
             self.vmessSecurity = security
+            self.vmessBodyOptions = bodyOptions
             self.tls = tls
             self.sni = sni ?? ""
             self.allowInsecure = allowInsecure
@@ -153,7 +155,7 @@ struct HopDraft {
             guard UUID(uuidString: uuid) != nil else { return nil }
             let trimmedSNI = sni.trimmingCharacters(in: .whitespaces)
             protocolConfig = .vmess(
-                uuid: uuid, security: vmessSecurity, tls: tls, sni: trimmedSNI.isEmpty ? nil : trimmedSNI, allowInsecure: allowInsecure,
+                uuid: uuid, security: vmessSecurity, bodyOptions: vmessBodyOptions, tls: tls, sni: trimmedSNI.isEmpty ? nil : trimmedSNI, allowInsecure: allowInsecure,
                 wsPath: trimmedWSPath, wsHost: trimmedWSHost
             )
         case .trojan:

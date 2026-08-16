@@ -173,6 +173,45 @@ final class VMessCoreTests: XCTestCase {
         XCTAssertEqual(vmessChaCha20Poly1305Key(key).count, 32)
     }
 
+    func testSHAKE128MatchesNISTVectorAndStreamsContinuously() {
+        var shake = VMessSHAKE128(seed: (0..<16).map(UInt8.init))
+        let first = shake.read(17)
+        let second = shake.read(47)
+        let got = (first + second).map { String(format: "%02x", $0) }.joined()
+        XCTAssertEqual(got, "98481946de85c670a7a84432ab4091a81ec7a3126d0f60d33a589bd82714fbcf239f3a1a2926f1951544f80c6d3e94eb6b57916a06f811bc2a3068cb86a492a6")
+    }
+
+    func testAuthenticatedLengthRoundTripForAESAndChaCha() throws {
+        let key = (0..<16).map(UInt8.init)
+        let iv = (16..<32).map(UInt8.init)
+        for security in [VMessSecurity.aes128GCM, .chacha20Poly1305] {
+            let sealed = sealVMessLength(1234, key: key, iv: iv, counter: 9, security: security)
+            XCTAssertEqual(sealed.count, 18)
+            XCTAssertEqual(try openVMessLength(sealed, key: key, iv: iv, counter: 9, security: security), 1234)
+            var tampered = sealed
+            tampered[0] ^= 1
+            XCTAssertThrowsError(try openVMessLength(tampered, key: key, iv: iv, counter: 9, security: security))
+        }
+    }
+
+    func testModernOptionsAreAdvertisedInRequestHeader() throws {
+        let uuid = parseUUID("0398d470-bc09-4cd5-889d-3ae4c569b6da")
+        let request = try VMessRequest.build(uuid: uuid, target: VMessTarget(host: "example.com", port: 443))
+        let plain = try openVMessAEADHeader(
+            key: md5(uuid + cmdKeyMagic), authID: Array(request.wireBytes.prefix(16)), remainder: Array(request.wireBytes.dropFirst(16))
+        )
+        XCTAssertEqual(plain[34], VMessRequest.optionChunkStream | VMessRequest.optionChunkMasking | VMessRequest.optionGlobalPadding)
+
+        let authenticated = try VMessRequest.build(
+            uuid: uuid, target: VMessTarget(host: "example.com", port: 443),
+            bodyOptions: VMessBodyOptions(authenticatedLength: true)
+        )
+        let authenticatedPlain = try openVMessAEADHeader(
+            key: md5(uuid + cmdKeyMagic), authID: Array(authenticated.wireBytes.prefix(16)), remainder: Array(authenticated.wireBytes.dropFirst(16))
+        )
+        XCTAssertEqual(authenticatedPlain[34] & VMessRequest.optionAuthenticatedLength, VMessRequest.optionAuthenticatedLength)
+    }
+
     func testVMessRequestBuildSupportsIPv4AndIPv6Targets() throws {
         let uuid = parseUUID("0398d470-bc09-4cd5-889d-3ae4c569b6da")
         let cmdKey = md5(uuid + cmdKeyMagic)

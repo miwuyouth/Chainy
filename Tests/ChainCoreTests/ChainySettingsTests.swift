@@ -2,6 +2,7 @@ import XCTest
 import SOCKS5Core
 import ShadowsocksCore
 import HTTPProxyCore
+import VMessCore
 @testable import ChainCore
 
 final class ChainySettingsTests: XCTestCase {
@@ -275,11 +276,15 @@ final class ChainySettingsTests: XCTestCase {
     func testVMessChaChaSecurityRoundTripsThroughJSON() throws {
         let hop = ProxyHop(
             host: "vmess.example", port: 443,
-            protocolConfig: .vmess(uuid: "11111111-1111-1111-1111-111111111111", security: .chacha20Poly1305)
+            protocolConfig: .vmess(
+                uuid: "11111111-1111-1111-1111-111111111111", security: .chacha20Poly1305,
+                bodyOptions: VMessBodyOptions(chunkMasking: true, globalPadding: true, authenticatedLength: true)
+            )
         )
         let data = try JSONEncoder().encode(hop)
         XCTAssertEqual(try JSONDecoder().decode(ProxyHop.self, from: data), hop)
         XCTAssertTrue(String(decoding: data, as: UTF8.self).contains("chacha20-poly1305"))
+        XCTAssertTrue(String(decoding: data, as: UTF8.self).contains("authenticatedLength"))
     }
 
     func testRejectsActiveChainIDNotMatchingAnyChain() {

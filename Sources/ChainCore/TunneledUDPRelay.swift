@@ -282,10 +282,10 @@ public final class TunneledUDPRelay: UDPRelay {
 
             do {
                 switch last.protocolConfig {
-                case .vmess(let uuid, let security, let tls, let sni, let allowInsecure, let wsPath, let wsHost):
+                case .vmess(let uuid, let security, let bodyOptions, let tls, let sni, let allowInsecure, let wsPath, let wsHost):
                     return try await VMessSession.open(
                         over: transport, uuid: uuid, target: VMessTarget(host: targetHost, port: targetPort),
-                        command: VMessRequest.commandUDP, security: security,
+                        command: VMessRequest.commandUDP, security: security, bodyOptions: bodyOptions,
                         tls: tls, sni: sni ?? last.host, allowInsecure: allowInsecure, wsPath: wsPath, wsHost: wsHost,
                         timeout: connectTimeout
                     )

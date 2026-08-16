@@ -37,11 +37,27 @@ public enum VMessSecurity: String, Codable, CaseIterable, Sendable {
     public var resolved: VMessSecurity { self == .auto ? .aes128GCM : self }
 }
 
+public struct VMessBodyOptions: Codable, Equatable, Sendable {
+    public var chunkMasking: Bool
+    public var globalPadding: Bool
+    public var authenticatedLength: Bool
+
+    public init(chunkMasking: Bool = true, globalPadding: Bool = true, authenticatedLength: Bool = false) {
+        self.chunkMasking = chunkMasking
+        self.globalPadding = globalPadding
+        self.authenticatedLength = authenticatedLength
+    }
+
+    public static let modern = VMessBodyOptions()
+    public var effectiveGlobalPadding: Bool { chunkMasking && globalPadding }
+}
+
 public struct VMessServerConfig {
     public let host: String
     public let port: UInt16
     public let uuid: String
     public let security: VMessSecurity
+    public let bodyOptions: VMessBodyOptions
     /// Wraps the connection in TLS before sending the VMess request header
     /// -- matches VLESSServerConfig's own `tls`/`sni`/`allowInsecure` shape;
     /// `false` (the historical default here) sends the request directly
@@ -57,11 +73,12 @@ public struct VMessServerConfig {
     public let wsPath: String?
     public let wsHost: String?
 
-    public init(host: String, port: UInt16, uuid: String, security: VMessSecurity = .auto, tls: Bool = false, sni: String? = nil, allowInsecure: Bool = false, wsPath: String? = nil, wsHost: String? = nil) {
+    public init(host: String, port: UInt16, uuid: String, security: VMessSecurity = .auto, bodyOptions: VMessBodyOptions = .modern, tls: Bool = false, sni: String? = nil, allowInsecure: Bool = false, wsPath: String? = nil, wsHost: String? = nil) {
         self.host = host
         self.port = port
         self.uuid = uuid
         self.security = security
+        self.bodyOptions = bodyOptions
         self.tls = tls
         self.sni = sni
         self.allowInsecure = allowInsecure
@@ -202,6 +219,9 @@ public struct VMessRequest {
     /// is framed into length-prefixed chunks (see `sealVMessBodyChunk`)
     /// rather than a raw byte pipe, which any non-`none` Security implies.
     public static let optionChunkStream: UInt8 = 0x01
+    public static let optionChunkMasking: UInt8 = 0x04
+    public static let optionGlobalPadding: UInt8 = 0x08
+    public static let optionAuthenticatedLength: UInt8 = 0x10
     public static let commandTCP: UInt8 = 1
     /// UDP-over-this-connection: the body that follows is framed into
     /// per-datagram chunks (see ChainCore's `TunneledUDPRelay`) rather than
@@ -210,7 +230,7 @@ public struct VMessRequest {
     /// `commandTCP`.
     public static let commandUDP: UInt8 = 2
 
-    public static func build(uuid: [UInt8], target: VMessTarget, command: UInt8 = commandTCP, security: VMessSecurity = .auto) throws -> VMessRequest {
+    public static func build(uuid: [UInt8], target: VMessTarget, command: UInt8 = commandTCP, security: VMessSecurity = .auto, bodyOptions: VMessBodyOptions = .modern) throws -> VMessRequest {
         let cmdKey = md5(uuid + cmdKeyMagic)
         let requestBodyIV = (0..<16).map { _ in UInt8.random(in: 0...255) }
         let requestBodyKey = (0..<16).map { _ in UInt8.random(in: 0...255) }
@@ -222,7 +242,11 @@ public struct VMessRequest {
         plain += requestBodyIV
         plain += requestBodyKey
         plain.append(responseHeaderByte)
-        plain.append(optionChunkStream)
+        var option = optionChunkStream
+        if bodyOptions.chunkMasking { option |= optionChunkMasking }
+        if bodyOptions.effectiveGlobalPadding { option |= optionGlobalPadding }
+        if bodyOptions.authenticatedLength { option |= optionAuthenticatedLength }
+        plain.append(option)
         let securityByte = security.resolved == .chacha20Poly1305 ? securityChaCha20Poly1305 : securityAES128GCM
         plain.append(UInt8(paddingLen << 4) | securityByte)
         plain.append(0)                               // Reserved
@@ -279,15 +303,13 @@ public func decodeResponseHeader(requestBodyKey: [UInt8], requestBodyIV: [UInt8]
 // MARK: - VMess AEAD body chunking (AES-128-GCM / ChaCha20-Poly1305)
 //
 // Once the request/response AEAD headers are exchanged, application data in
-// each direction is split into chunks: a plain 2-byte big-endian length
-// (of the AES-128-GCM-sealed ciphertext + 16-byte tag that follows) then
-// that many bytes. The selected AEAD is declared in the request header.
-// This is v2ray-core's original, un-masked, non-length-
-// -authenticated AEAD chunk format (Option byte requests `ChunkStream` only
-// -- no `ChunkMasking`/`GlobalPadding`/`AuthenticatedLength`), which every
-// mainstream VMess-compatible server (v2ray-core, Xray-core, sing-box,
-// mihomo/Clash.Meta) still accepts since the option bits themselves tell the
-// server which framing the client is using.
+// each direction is split into individually authenticated chunks. Modern
+// framing masks each 2-byte length with a SHAKE128 stream derived from that
+// direction's IV and appends 0...63 cleartext random padding bytes; the
+// optional Authenticated Length experiment replaces the masked prefix with
+// an independently AEAD-sealed 18-byte length. The request option bits tell
+// the server exactly which framing is in use. The selected body AEAD is
+// declared independently in the request header's security nibble.
 //
 // Each direction's body key is that direction's own body key (`requestBodyKey`
 // for client->server, `sha256(requestBodyKey).prefix(16)` for server->client,
@@ -298,8 +320,112 @@ public func decodeResponseHeader(requestBodyKey: [UInt8], requestBodyIV: [UInt8]
 
 let vmessMaxChunkPlaintext = 16 * 1024
 
+/// Minimal streaming SHAKE128 used by VMess's chunk-size masker and padding
+/// generator. SHAKE absorbs the direction's 16-byte IV once, then yields one
+/// continuous byte stream shared by padding and length masking.
+public struct VMessSHAKE128 {
+    private static let rate = 168
+    private static let rotations: [Int] = [
+         0,  1, 62, 28, 27, 36, 44,  6, 55, 20,  3, 10, 43,
+        25, 39, 41, 45, 15, 21,  8, 18,  2, 61, 56, 14,
+    ]
+    private static let roundConstants: [UInt64] = [
+        0x0000000000000001, 0x0000000000008082, 0x800000000000808a, 0x8000000080008000,
+        0x000000000000808b, 0x0000000080000001, 0x8000000080008081, 0x8000000000008009,
+        0x000000000000008a, 0x0000000000000088, 0x0000000080008009, 0x000000008000000a,
+        0x000000008000808b, 0x800000000000008b, 0x8000000000008089, 0x8000000000008003,
+        0x8000000000008002, 0x8000000000000080, 0x000000000000800a, 0x800000008000000a,
+        0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008,
+    ]
+
+    private var state = [UInt64](repeating: 0, count: 25)
+    private var offset = 0
+
+    public init(seed: [UInt8]) {
+        var block = [UInt8](repeating: 0, count: Self.rate)
+        precondition(seed.count < Self.rate)
+        block.replaceSubrange(0..<seed.count, with: seed)
+        block[seed.count] ^= 0x1f // SHAKE domain separator
+        block[Self.rate - 1] ^= 0x80
+        for i in 0..<Self.rate { state[i / 8] ^= UInt64(block[i]) << UInt64(8 * (i % 8)) }
+        Self.permute(&state)
+    }
+
+    public mutating func read(_ count: Int) -> [UInt8] {
+        var result: [UInt8] = []
+        result.reserveCapacity(count)
+        while result.count < count {
+            if offset == Self.rate {
+                Self.permute(&state)
+                offset = 0
+            }
+            result.append(UInt8((state[offset / 8] >> UInt64(8 * (offset % 8))) & 0xff))
+            offset += 1
+        }
+        return result
+    }
+
+    public mutating func nextUInt16() -> UInt16 {
+        let bytes = read(2)
+        return UInt16(bytes[0]) << 8 | UInt16(bytes[1])
+    }
+
+    private static func permute(_ a: inout [UInt64]) {
+        for rc in roundConstants {
+            var c = [UInt64](repeating: 0, count: 5)
+            for x in 0..<5 { c[x] = a[x] ^ a[x + 5] ^ a[x + 10] ^ a[x + 15] ^ a[x + 20] }
+            var d = [UInt64](repeating: 0, count: 5)
+            for x in 0..<5 { d[x] = c[(x + 4) % 5] ^ c[(x + 1) % 5].rotatedLeft(1) }
+            for y in 0..<5 { for x in 0..<5 { a[x + 5 * y] ^= d[x] } }
+
+            var b = [UInt64](repeating: 0, count: 25)
+            for y in 0..<5 {
+                for x in 0..<5 {
+                    b[y + 5 * ((2 * x + 3 * y) % 5)] = a[x + 5 * y].rotatedLeft(rotations[x + 5 * y])
+                }
+            }
+            for y in 0..<5 {
+                for x in 0..<5 { a[x + 5 * y] = b[x + 5 * y] ^ ((~b[(x + 1) % 5 + 5 * y]) & b[(x + 2) % 5 + 5 * y]) }
+            }
+            a[0] ^= rc
+        }
+    }
+}
+
+private extension UInt64 {
+    func rotatedLeft(_ count: Int) -> UInt64 {
+        guard count != 0 else { return self }
+        return (self << UInt64(count)) | (self >> UInt64(64 - count))
+    }
+}
+
 func vmessChunkNonce(counter: UInt16, iv: [UInt8]) -> [UInt8] {
     counter.bigEndianBytes + Array(iv[2..<12])
+}
+
+func sealVMessLength(_ value: UInt16, key: [UInt8], iv: [UInt8], counter: UInt16, security: VMessSecurity) -> [UInt8] {
+    let authKey = vmessKDF16(key: key, path: [Array("auth_len".utf8)])
+    let nonce = vmessChunkNonce(counter: counter, iv: iv)
+    switch security.resolved {
+    case .chacha20Poly1305:
+        return chachaPolySeal(key: vmessChaCha20Poly1305Key(authKey), nonce: nonce, plaintext: value.bigEndianBytes, aad: [])
+    case .auto, .aes128GCM:
+        return aesGCMSeal(key: authKey, nonce: nonce, plaintext: value.bigEndianBytes, aad: [])
+    }
+}
+
+func openVMessLength(_ sealed: [UInt8], key: [UInt8], iv: [UInt8], counter: UInt16, security: VMessSecurity) throws -> UInt16 {
+    let authKey = vmessKDF16(key: key, path: [Array("auth_len".utf8)])
+    let nonce = vmessChunkNonce(counter: counter, iv: iv)
+    let plain: [UInt8]
+    switch security.resolved {
+    case .chacha20Poly1305:
+        plain = try chachaPolyOpen(key: vmessChaCha20Poly1305Key(authKey), nonce: nonce, sealed: sealed, aad: [])
+    case .auto, .aes128GCM:
+        plain = try aesGCMOpen(key: authKey, nonce: nonce, sealed: sealed, aad: [])
+    }
+    guard plain.count == 2 else { throw VMessError.malformedResponse }
+    return UInt16(plain[0]) << 8 | UInt16(plain[1])
 }
 
 /// Seals one chunk of outgoing application data, returning the 2-byte
@@ -354,12 +480,15 @@ public final class VMessSession: ByteStreamSource, ByteStreamSink, ByteStreamAva
     private let responseBodyIV: [UInt8]
     private let responseHeaderByte: UInt8
     private let security: VMessSecurity
+    private let bodyOptions: VMessBodyOptions
     private var buffered: [UInt8] = []
     private var cachedResponseHeader: VMessResponseHeader?
     private var outboundChunkCounter: UInt16 = 0
     private var inboundChunkCounter: UInt16 = 0
+    private var outboundShake: VMessSHAKE128?
+    private var inboundShake: VMessSHAKE128?
 
-    private init(conn: any ProxyTransport, requestBodyKey: [UInt8], requestBodyIV: [UInt8], responseHeaderByte: UInt8, security: VMessSecurity) {
+    private init(conn: any ProxyTransport, requestBodyKey: [UInt8], requestBodyIV: [UInt8], responseHeaderByte: UInt8, security: VMessSecurity, bodyOptions: VMessBodyOptions) {
         self.conn = conn
         self.requestBodyKey = requestBodyKey
         self.requestBodyIV = requestBodyIV
@@ -367,6 +496,9 @@ public final class VMessSession: ByteStreamSource, ByteStreamSink, ByteStreamAva
         self.responseBodyIV = Array(sha256(requestBodyIV).prefix(16))
         self.responseHeaderByte = responseHeaderByte
         self.security = security.resolved
+        self.bodyOptions = bodyOptions
+        self.outboundShake = (bodyOptions.chunkMasking || bodyOptions.effectiveGlobalPadding) ? VMessSHAKE128(seed: requestBodyIV) : nil
+        self.inboundShake = (bodyOptions.chunkMasking || bodyOptions.effectiveGlobalPadding) ? VMessSHAKE128(seed: Array(sha256(requestBodyIV).prefix(16))) : nil
     }
 
     /// Sends the AEAD request header asking to connect to `target` over an
@@ -382,7 +514,7 @@ public final class VMessSession: ByteStreamSource, ByteStreamSink, ByteStreamAva
     /// `TrojanSession`'s own doc comment on why, and this generic entry
     /// point may be stacking VMess mid-chain instead) and `WSConn`.
     public static func open(
-        over transport: any ProxyTransport, uuid: String, target: VMessTarget, command: UInt8 = VMessRequest.commandTCP, security: VMessSecurity = .auto,
+        over transport: any ProxyTransport, uuid: String, target: VMessTarget, command: UInt8 = VMessRequest.commandTCP, security: VMessSecurity = .auto, bodyOptions: VMessBodyOptions = .modern,
         tls: Bool = false, sni: String = "", allowInsecure: Bool = false,
         wsPath: String? = nil, wsHost: String? = nil,
         timeout: TimeInterval? = 10
@@ -399,10 +531,10 @@ public final class VMessSession: ByteStreamSource, ByteStreamSink, ByteStreamAva
             // has no `host` of its own to fall back to further.
             conn = try await WSConn.handshake(over: conn, host: wsHost ?? sni, path: wsPath, timeout: timeout)
         }
-        let request = try VMessRequest.build(uuid: parseUUID(uuid), target: target, command: command, security: security)
+        let request = try VMessRequest.build(uuid: parseUUID(uuid), target: target, command: command, security: security, bodyOptions: bodyOptions)
         try await conn.send(request.wireBytes, timeout: timeout)
         return VMessSession(conn: conn, requestBodyKey: request.requestBodyKey,
-                             requestBodyIV: request.requestBodyIV, responseHeaderByte: request.responseHeaderByte, security: security)
+                             requestBodyIV: request.requestBodyIV, responseHeaderByte: request.responseHeaderByte, security: security, bodyOptions: bodyOptions)
     }
 
     /// Dials `server` directly over TCP, optionally wraps TLS/WS, then sends
@@ -414,7 +546,7 @@ public final class VMessSession: ByteStreamSource, ByteStreamSink, ByteStreamAva
         try await conn.connect(timeout: connectTimeout)
         do {
             return try await open(
-                over: conn, uuid: server.uuid, target: target, command: command, security: server.security,
+                over: conn, uuid: server.uuid, target: target, command: command, security: server.security, bodyOptions: server.bodyOptions,
                 tls: server.tls, sni: server.sni ?? server.host, allowInsecure: server.allowInsecure,
                 wsPath: server.wsPath, wsHost: server.wsHost,
                 timeout: connectTimeout
@@ -437,7 +569,18 @@ public final class VMessSession: ByteStreamSource, ByteStreamSink, ByteStreamAva
         var offset = 0
         while offset < bytes.count {
             let end = min(offset + vmessMaxChunkPlaintext, bytes.count)
-            wire += sealVMessBodyChunk(key: requestBodyKey, iv: requestBodyIV, counter: outboundChunkCounter, plaintext: Array(bytes[offset..<end]), security: security)
+            let plaintext = Array(bytes[offset..<end])
+            let sealed = Array(sealVMessBodyChunk(key: requestBodyKey, iv: requestBodyIV, counter: outboundChunkCounter, plaintext: plaintext, security: security).dropFirst(2))
+            let paddingLength = bodyOptions.effectiveGlobalPadding ? Int(outboundShake!.nextUInt16() % 64) : 0
+            let totalLength = sealed.count + paddingLength
+            if bodyOptions.authenticatedLength {
+                wire += sealVMessLength(UInt16(totalLength - 16), key: requestBodyKey, iv: requestBodyIV, counter: outboundChunkCounter, security: security)
+            } else {
+                let mask = bodyOptions.chunkMasking ? outboundShake!.nextUInt16() : 0
+                wire += (UInt16(totalLength) ^ mask).bigEndianBytes
+            }
+            wire += sealed
+            if paddingLength > 0 { wire += (0..<paddingLength).map { _ in UInt8.random(in: 0...255) } }
             outboundChunkCounter &+= 1
             offset = end
         }
@@ -493,13 +636,23 @@ public final class VMessSession: ByteStreamSource, ByteStreamSink, ByteStreamAva
     private func readNextChunk(timeout: TimeInterval?) async throws -> [UInt8] {
         let lengthBytes: [UInt8]
         do {
-            lengthBytes = try await conn.readExactly(2, timeout: timeout)
+            lengthBytes = try await conn.readExactly(bodyOptions.authenticatedLength ? 18 : 2, timeout: timeout)
         } catch ProxyError.connectionClosed {
             return []
         }
-        let length = Int(lengthBytes[0]) << 8 | Int(lengthBytes[1])
+        let paddingLength = bodyOptions.effectiveGlobalPadding ? Int(inboundShake!.nextUInt16() % 64) : 0
+        let length: Int
+        if bodyOptions.authenticatedLength {
+            let decoded = try openVMessLength(lengthBytes, key: requestBodyKey, iv: requestBodyIV, counter: inboundChunkCounter, security: security)
+            length = Int(decoded) + 16
+        } else {
+            let mask = bodyOptions.chunkMasking ? inboundShake!.nextUInt16() : 0
+            length = Int((UInt16(lengthBytes[0]) << 8 | UInt16(lengthBytes[1])) ^ mask)
+        }
         guard length > 0 else { return [] }
-        let sealed = try await conn.readExactly(length, timeout: timeout)
+        guard length >= paddingLength + 16 else { throw VMessError.malformedResponse }
+        let payloadAndPadding = try await conn.readExactly(length, timeout: timeout)
+        let sealed = Array(payloadAndPadding.prefix(length - paddingLength))
         let plaintext = try openVMessBodyChunkPayload(key: responseBodyKey, iv: responseBodyIV, counter: inboundChunkCounter, sealed: sealed, security: security)
         inboundChunkCounter &+= 1
         return plaintext

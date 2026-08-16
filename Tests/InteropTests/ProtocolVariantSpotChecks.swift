@@ -17,6 +17,7 @@ import ProxyKit
 import SOCKS5Core
 import HTTPProxyCore
 import ShadowsocksCore
+import VMessCore
 
 final class ProtocolVariantSpotChecks: XCTestCase {
     private func skipIfUnavailable() throws {
@@ -147,6 +148,19 @@ final class ProtocolVariantSpotChecks: XCTestCase {
             protocolConfig: .vmess(uuid: XrayTestEnvironment.vmessUUID, security: .chacha20Poly1305)
         )
         try await assertRoundTrip(hop, label: "vmess-chacha20-poly1305")
+    }
+
+    func testVMessAuthenticatedLengthAgainstRealXray() async throws {
+        try skipIfUnavailable()
+        _ = XrayTestEnvironment.shared
+        let hop = ProxyHop(
+            host: XrayTestEnvironment.host, port: XrayTestEnvironment.Ports.vmessAuthenticatedLength,
+            protocolConfig: .vmess(
+                uuid: XrayTestEnvironment.vmessUUID,
+                bodyOptions: VMessBodyOptions(chunkMasking: true, globalPadding: true, authenticatedLength: true)
+            )
+        )
+        try await assertRoundTrip(hop, label: "vmess-authenticated-length")
     }
 
     func testVLESSWithWebSocketAndTLS() async throws {

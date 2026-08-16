@@ -40,6 +40,10 @@ struct HopFieldsForm: View {
                     Text(security.rawValue).tag(security)
                 }
             }
+            Toggle("Chunk length masking", isOn: $draft.vmessBodyOptions.chunkMasking)
+            Toggle("Global padding", isOn: $draft.vmessBodyOptions.globalPadding)
+                .disabled(!draft.vmessBodyOptions.chunkMasking)
+            Toggle("Authenticated length (server must enable experiment)", isOn: $draft.vmessBodyOptions.authenticatedLength)
             Toggle("Use TLS", isOn: $draft.tls)
             if draft.tls {
                 TextField("SNI (optional, defaults to host)", text: $draft.sni)

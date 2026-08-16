@@ -38,7 +38,7 @@ public enum ProxyHopProtocol: Equatable {
     /// wraps a WebSocket tunnel between the TLS layer (if any) and the
     /// VMess handshake -- `wsHost` is the WS upgrade request's `Host:`
     /// header, if different from `sni ?? host` (`nil` means use that).
-    case vmess(uuid: String, security: VMessSecurity = .auto, tls: Bool = false, sni: String? = nil, allowInsecure: Bool = false, wsPath: String? = nil, wsHost: String? = nil)
+    case vmess(uuid: String, security: VMessSecurity = .auto, bodyOptions: VMessBodyOptions = .modern, tls: Bool = false, sni: String? = nil, allowInsecure: Bool = false, wsPath: String? = nil, wsHost: String? = nil)
     /// `tls` defaults to `true` (Trojan's whole design goal is to look like
     /// ordinary HTTPS) -- `false` opts out for the rarer real-world server
     /// that runs the trojan handshake directly over plain TCP instead (a
@@ -255,7 +255,7 @@ public enum ProxyChain {
             case .shadowsocks(let password, let cipher):
                 return try await ShadowsocksSession.open(over: transport, password: password, cipher: cipher, targetHost: ProxyAddress.parse(targetHost), targetPort: targetPort, timeout: timeout)
 
-            case .vmess(let uuid, let security, let tls, let sni, let allowInsecure, let wsPath, let wsHost):
+            case .vmess(let uuid, let security, let bodyOptions, let tls, let sni, let allowInsecure, let wsPath, let wsHost):
                 // Deliberately *not* reading/validating VMess's AEAD response
                 // header here (unlike SOCKS5's CONNECT reply, fully consumed by
                 // the time `open` returns): a real server has nothing to send
@@ -272,7 +272,7 @@ public enum ProxyChain {
                 // which point the next hop's handshake (or the terminal
                 // caller's own send) has already produced something to relay.
                 return try await VMessSession.open(
-                    over: transport, uuid: uuid, target: VMessTarget(host: targetHost, port: targetPort), security: security,
+                    over: transport, uuid: uuid, target: VMessTarget(host: targetHost, port: targetPort), security: security, bodyOptions: bodyOptions,
                     tls: tls, sni: sni ?? hop.host, allowInsecure: allowInsecure, wsPath: wsPath, wsHost: wsHost, timeout: timeout
                 )
 

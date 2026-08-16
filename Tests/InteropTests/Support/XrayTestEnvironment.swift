@@ -181,6 +181,7 @@ final class XrayTestEnvironment: @unchecked Sendable {
         // existed. Unlike `vlessNoTLS` (VLESS's spec-correct default),
         // this is the *non-default* case for Trojan.
         static let trojanNoTLS: UInt16 = 18120
+        static let vmessAuthenticatedLength: UInt16 = 18121
 
         static let all: [UInt16] = [
             socks5, http, vmess, vless, trojan, shadowsocks,
@@ -188,7 +189,7 @@ final class XrayTestEnvironment: @unchecked Sendable {
             vmessWSTLS, vlessWSTLS, trojanWS,
             shadowsocks2022Aes128Gcm, shadowsocks2022Aes256Gcm, shadowsocks2022Chacha20,
             vmessTLSOnly, vmessWSOnly, vlessWSOnly,
-            trojanNoTLS,
+            trojanNoTLS, vmessAuthenticatedLength,
         ]
     }
 
@@ -367,6 +368,10 @@ final class XrayTestEnvironment: @unchecked Sendable {
             [
                 "tag": "vmess-in", "listen": host, "port": Ports.vmess, "protocol": "vmess",
                 "settings": ["clients": [["id": vmessUUID, "alterId": 0]]],
+            ],
+            [
+                "tag": "vmess-auth-length-in", "listen": host, "port": Ports.vmessAuthenticatedLength, "protocol": "vmess",
+                "settings": ["clients": [["id": vmessUUID, "alterId": 0, "experiments": "AuthenticatedLength"]]],
             ],
             [
                 "tag": "vless-in", "listen": host, "port": Ports.vless, "protocol": "vless",

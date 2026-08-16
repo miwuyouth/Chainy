@@ -70,7 +70,7 @@ import HTTPProxyCore
 extension ProxyHop: Codable {
     private enum CodingKeys: String, CodingKey {
         case protocolName = "protocol"
-        case host, port, username, password, cipher, uuid, security, sni, allowInsecure, tls
+        case host, port, username, password, cipher, uuid, security, chunkMasking, globalPadding, authenticatedLength, sni, allowInsecure, tls
         case wsPath, wsHost
     }
 
@@ -119,12 +119,17 @@ extension ProxyHop: Codable {
             guard let security = VMessSecurity(rawValue: securityRaw) else {
                 throw DecodingError.dataCorruptedError(forKey: .security, in: container, debugDescription: "unknown VMess security \"\(securityRaw)\"")
             }
+            let bodyOptions = VMessBodyOptions(
+                chunkMasking: try container.decodeIfPresent(Bool.self, forKey: .chunkMasking) ?? true,
+                globalPadding: try container.decodeIfPresent(Bool.self, forKey: .globalPadding) ?? true,
+                authenticatedLength: try container.decodeIfPresent(Bool.self, forKey: .authenticatedLength) ?? false
+            )
             let tls = try container.decodeIfPresent(Bool.self, forKey: .tls) ?? false
             let sni = try container.decodeIfPresent(String.self, forKey: .sni)
             let allowInsecure = try container.decodeIfPresent(Bool.self, forKey: .allowInsecure) ?? false
             let wsPath = try container.decodeIfPresent(String.self, forKey: .wsPath)
             let wsHost = try container.decodeIfPresent(String.self, forKey: .wsHost)
-            protocolConfig = .vmess(uuid: uuid, security: security, tls: tls, sni: sni, allowInsecure: allowInsecure, wsPath: wsPath, wsHost: wsHost)
+            protocolConfig = .vmess(uuid: uuid, security: security, bodyOptions: bodyOptions, tls: tls, sni: sni, allowInsecure: allowInsecure, wsPath: wsPath, wsHost: wsHost)
 
         case .trojan:
             guard let password = try container.decodeIfPresent(String.self, forKey: .password) else {
@@ -183,10 +188,13 @@ extension ProxyHop: Codable {
             try container.encode(password, forKey: .password)
             try container.encode(cipher.rawValue, forKey: .cipher)
 
-        case .vmess(let uuid, let security, let tls, let sni, let allowInsecure, let wsPath, let wsHost):
+        case .vmess(let uuid, let security, let bodyOptions, let tls, let sni, let allowInsecure, let wsPath, let wsHost):
             try container.encode(ProtocolName.vmess, forKey: .protocolName)
             try container.encode(uuid, forKey: .uuid)
             if security != .auto { try container.encode(security.rawValue, forKey: .security) }
+            if !bodyOptions.chunkMasking { try container.encode(false, forKey: .chunkMasking) }
+            if !bodyOptions.globalPadding { try container.encode(false, forKey: .globalPadding) }
+            if bodyOptions.authenticatedLength { try container.encode(true, forKey: .authenticatedLength) }
             if tls { try container.encode(tls, forKey: .tls) }
             try container.encodeIfPresent(sni, forKey: .sni)
             if allowInsecure { try container.encode(allowInsecure, forKey: .allowInsecure) }

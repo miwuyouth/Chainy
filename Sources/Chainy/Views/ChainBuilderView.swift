@@ -452,7 +452,7 @@ struct ChainBuilderView: View {
         switch staged.hop.protocolConfig {
         case .trojan(_, let tls, _, _, _, _): return tls
         case .vless(_, true, _, _, _, _): return true
-        case .vmess(_, _, true, _, _, _, _): return true
+        case .vmess(_, _, _, true, _, _, _, _): return true
         default: return false
         }
     }
