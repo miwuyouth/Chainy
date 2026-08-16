@@ -139,6 +139,16 @@ final class ProtocolVariantSpotChecks: XCTestCase {
         try await assertRoundTrip(hop, label: "vmess-ws-tls")
     }
 
+    func testVMessChaCha20Poly1305AgainstRealXray() async throws {
+        try skipIfUnavailable()
+        _ = XrayTestEnvironment.shared
+        let hop = ProxyHop(
+            host: XrayTestEnvironment.host, port: XrayTestEnvironment.Ports.vmess,
+            protocolConfig: .vmess(uuid: XrayTestEnvironment.vmessUUID, security: .chacha20Poly1305)
+        )
+        try await assertRoundTrip(hop, label: "vmess-chacha20-poly1305")
+    }
+
     func testVLESSWithWebSocketAndTLS() async throws {
         try skipIfUnavailable()
         _ = XrayTestEnvironment.shared

@@ -140,6 +140,39 @@ final class VMessCoreTests: XCTestCase {
         XCTAssertNotEqual(VMessRequest.commandUDP, VMessRequest.commandTCP)
     }
 
+    func testVMessRequestAdvertisesChaCha20Poly1305InHeader() throws {
+        let uuid = parseUUID("0398d470-bc09-4cd5-889d-3ae4c569b6da")
+        let request = try VMessRequest.build(
+            uuid: uuid, target: VMessTarget(host: "example.com", port: 443), security: .chacha20Poly1305
+        )
+        let plain = try openVMessAEADHeader(
+            key: md5(uuid + cmdKeyMagic), authID: Array(request.wireBytes.prefix(16)),
+            remainder: Array(request.wireBytes.dropFirst(16))
+        )
+        XCTAssertEqual(plain[35] & 0x0f, VMessRequest.securityChaCha20Poly1305)
+    }
+
+    func testChaCha20Poly1305BodyChunkRoundTripAndRejectsAESDecoder() throws {
+        let key = (0..<16).map(UInt8.init)
+        let iv = (16..<32).map(UInt8.init)
+        let plaintext = Array("real vmess chacha body".utf8)
+        let wire = sealVMessBodyChunk(key: key, iv: iv, counter: 7, plaintext: plaintext, security: .chacha20Poly1305)
+        let sealed = Array(wire.dropFirst(2))
+
+        XCTAssertEqual(
+            try openVMessBodyChunkPayload(key: key, iv: iv, counter: 7, sealed: sealed, security: .chacha20Poly1305),
+            plaintext
+        )
+        XCTAssertThrowsError(try openVMessBodyChunkPayload(key: key, iv: iv, counter: 7, sealed: sealed, security: .aes128GCM))
+    }
+
+    func testVMessChaChaKeyExpansionMatchesXrayAlgorithm() {
+        let key = (0..<16).map(UInt8.init)
+        let firstHalf = md5(key)
+        XCTAssertEqual(vmessChaCha20Poly1305Key(key), firstHalf + md5(firstHalf))
+        XCTAssertEqual(vmessChaCha20Poly1305Key(key).count, 32)
+    }
+
     func testVMessRequestBuildSupportsIPv4AndIPv6Targets() throws {
         let uuid = parseUUID("0398d470-bc09-4cd5-889d-3ae4c569b6da")
         let cmdKey = md5(uuid + cmdKeyMagic)

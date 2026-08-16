@@ -1,5 +1,6 @@
 import SwiftUI
 import ShadowsocksCore
+import VMessCore
 
 /// The protocol-dependent field set for editing one `HopDraft`: a protocol
 /// picker plus whichever host/port/credential fields that protocol needs.
@@ -34,6 +35,11 @@ struct HopFieldsForm: View {
 
         case .vmess:
             TextField("UUID", text: $draft.uuid)
+            Picker("Body encryption", selection: $draft.vmessSecurity) {
+                ForEach(VMessSecurity.allCases, id: \.self) { security in
+                    Text(security.rawValue).tag(security)
+                }
+            }
             Toggle("Use TLS", isOn: $draft.tls)
             if draft.tls {
                 TextField("SNI (optional, defaults to host)", text: $draft.sni)

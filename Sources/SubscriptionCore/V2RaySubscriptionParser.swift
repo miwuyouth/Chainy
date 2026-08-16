@@ -20,10 +20,10 @@
 // path/host taken from the JSON's `path`/`host` fields or the URI's
 // `path`/`host` query params) -- anything else (grpc/h2/quic/...) is
 // skipped the same way `ClashSubscriptionParser` skips it, since ChainCore
-// has no other transport. A vmess link's JSON "scy" (security/cipher) is
-// checked the same way Clash's own "cipher" field is: absent/"auto"/"none"
-// only, since this client only speaks VMess's `Security: none` body
-// encryption. A vless link whose `security` asks for anything but
+// has no other transport. Standard values in a vmess link's JSON "scy"
+// (security/cipher) are accepted and preserved for VMessCore; the VMess
+// server reads the actual cipher from the request
+// header. A vless link whose `security` asks for anything but
 // "none"/"tls" (in particular "reality", which needs a separate X25519 key
 // exchange this client doesn't implement), or whose `flow` is non-empty
 // (XTLS's "xtls-rprx-vision" needs transport-level stream splicing this
@@ -32,6 +32,7 @@
 import Foundation
 import ChainCore
 import ShadowsocksCore
+import VMessCore
 import HTTPProxyCore
 
 public enum V2RaySubscriptionParser {
@@ -146,11 +147,10 @@ public enum V2RaySubscriptionParser {
         let sni: String?
         let host: String?
         let path: String?
-        /// "Security" in v2rayN's own vmess JSON schema -- this client only
-        /// speaks VMess's `Security: none` body encryption (see VMessCore's
-        /// own doc comment), so anything else (absent/"auto"/"none" aside)
-        /// is skipped rather than silently imported and left to fail at
-        /// connect time with no explanation anywhere.
+        /// "Security" in v2rayN's VMess JSON schema. VMess servers identify
+        /// the body cipher from each request header, so a link's client-side
+        /// preference is preserved for VMessCore. Keep accepting `none` for
+        /// older exported links by upgrading it to encrypted AES-128-GCM.
         let scy: String?
 
         /// v2rayN's vmess JSON has historically sent `port` as either a
@@ -197,8 +197,15 @@ public enum V2RaySubscriptionParser {
             skipped.append(SkippedSubscriptionEntry(name: name, reason: "vmess node has an invalid port"))
             return
         }
-        if let scy = link.scy, !scy.isEmpty, scy != "auto", scy != "none" {
-            skipped.append(SkippedSubscriptionEntry(name: name, reason: "vmess cipher \"\(scy)\" is not supported (security=none/auto only)"))
+        let securityName = link.scy?.lowercased() ?? "auto"
+        let security: VMessSecurity
+        switch securityName {
+        case "", "auto": security = .auto
+        case "aes-128-gcm", "none": security = .aes128GCM
+        case "chacha20-poly1305": security = .chacha20Poly1305
+        default:
+            let scy = securityName
+            skipped.append(SkippedSubscriptionEntry(name: name, reason: "vmess cipher \"\(scy)\" is not recognized"))
             return
         }
         guard link.tls != "reality" else {
@@ -217,7 +224,7 @@ public enum V2RaySubscriptionParser {
 
         nodes.append(SubscriptionNode(
             name: name, host: link.add, port: port16,
-            protocolConfig: .vmess(uuid: link.id, tls: tls, sni: sni, wsPath: wsPath, wsHost: wsHost)
+            protocolConfig: .vmess(uuid: link.id, security: security, tls: tls, sni: sni, wsPath: wsPath, wsHost: wsHost)
         ))
     }
 

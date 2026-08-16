@@ -9,6 +9,7 @@
 import Foundation
 import ChainCore
 import ShadowsocksCore
+import VMessCore
 import HTTPProxyCore
 
 enum HopProtocolKind: String, CaseIterable, Identifiable {
@@ -45,6 +46,7 @@ struct HopDraft {
     var password: String = ""
     var cipher: ShadowsocksCipher = .aes256Gcm
     var uuid: String = UUID().uuidString
+    var vmessSecurity: VMessSecurity = .auto
     var sni: String = ""
     var allowInsecure: Bool = false
     /// Whether a `.vmess`/`.vless`/`.trojan` draft wraps the connection in
@@ -77,9 +79,10 @@ struct HopDraft {
             kind = .shadowsocks
             self.password = password
             self.cipher = cipher
-        case .vmess(let uuid, let tls, let sni, let allowInsecure, let wsPath, let wsHost):
+        case .vmess(let uuid, let security, let tls, let sni, let allowInsecure, let wsPath, let wsHost):
             kind = .vmess
             self.uuid = uuid
+            self.vmessSecurity = security
             self.tls = tls
             self.sni = sni ?? ""
             self.allowInsecure = allowInsecure
@@ -150,7 +153,7 @@ struct HopDraft {
             guard UUID(uuidString: uuid) != nil else { return nil }
             let trimmedSNI = sni.trimmingCharacters(in: .whitespaces)
             protocolConfig = .vmess(
-                uuid: uuid, tls: tls, sni: trimmedSNI.isEmpty ? nil : trimmedSNI, allowInsecure: allowInsecure,
+                uuid: uuid, security: vmessSecurity, tls: tls, sni: trimmedSNI.isEmpty ? nil : trimmedSNI, allowInsecure: allowInsecure,
                 wsPath: trimmedWSPath, wsHost: trimmedWSHost
             )
         case .trojan:

@@ -1,5 +1,6 @@
 import XCTest
 import ShadowsocksCore
+import VMessCore
 import HTTPProxyCore
 @testable import ChainCore
 @testable import SubscriptionCore
@@ -88,12 +89,25 @@ final class V2RaySubscriptionParserTests: XCTestCase {
         XCTAssertEqual(result.skipped.first?.name, "VMess Reality")
     }
 
-    func testSkipsVMessLinkWithUnsupportedCipher() {
-        let uri = vmessLink(ps: "VMess Cipher", add: "vm08.example.com", port: 443, id: "88888888-8888-8888-8888-888888888888", scy: "aes-128-gcm")
+    func testParsesEveryStandardVMessCipherPreference() {
+        let cases: [(String, VMessSecurity)] = [
+            ("auto", .auto), ("aes-128-gcm", .aes128GCM),
+            ("chacha20-poly1305", .chacha20Poly1305), ("none", .aes128GCM),
+        ]
+        for (cipher, expectedSecurity) in cases {
+            let uri = vmessLink(ps: "VMess Cipher", add: "vm08.example.com", port: 443, id: "88888888-8888-8888-8888-888888888888", scy: cipher)
+            let result = V2RaySubscriptionParser.parse(uri)
+            XCTAssertEqual(result.nodes.count, 1, cipher)
+            XCTAssertTrue(result.skipped.isEmpty, cipher)
+            XCTAssertEqual(result.nodes.first?.protocolConfig, .vmess(uuid: "88888888-8888-8888-8888-888888888888", security: expectedSecurity), cipher)
+        }
+    }
+
+    func testSkipsVMessLinkWithUnknownCipher() {
+        let uri = vmessLink(ps: "VMess Cipher", add: "vm08.example.com", port: 443, id: "88888888-8888-8888-8888-888888888888", scy: "rc4-md5")
         let result = V2RaySubscriptionParser.parse(uri)
         XCTAssertTrue(result.nodes.isEmpty)
-        XCTAssertEqual(result.skipped.first?.name, "VMess Cipher")
-        XCTAssertEqual(result.skipped.first?.reason, "vmess cipher \"aes-128-gcm\" is not supported (security=none/auto only)")
+        XCTAssertEqual(result.skipped.first?.reason, "vmess cipher \"rc4-md5\" is not recognized")
     }
 
     func testSkipsVMessLinkWithInvalidUUID() {

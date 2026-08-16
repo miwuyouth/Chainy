@@ -272,6 +272,16 @@ final class ChainySettingsTests: XCTestCase {
         XCTAssertThrowsError(try JSONDecoder().decode(ChainySettings.self, from: Data(json.utf8)))
     }
 
+    func testVMessChaChaSecurityRoundTripsThroughJSON() throws {
+        let hop = ProxyHop(
+            host: "vmess.example", port: 443,
+            protocolConfig: .vmess(uuid: "11111111-1111-1111-1111-111111111111", security: .chacha20Poly1305)
+        )
+        let data = try JSONEncoder().encode(hop)
+        XCTAssertEqual(try JSONDecoder().decode(ProxyHop.self, from: data), hop)
+        XCTAssertTrue(String(decoding: data, as: UTF8.self).contains("chacha20-poly1305"))
+    }
+
     func testRejectsActiveChainIDNotMatchingAnyChain() {
         let json = """
         { "chains": [{ "id": "3F2504E0-4F89-11D3-9A0C-0305E82C3301", "name": "n",

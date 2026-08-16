@@ -64,12 +64,13 @@
 import Foundation
 import SOCKS5Core
 import ShadowsocksCore
+import VMessCore
 import HTTPProxyCore
 
 extension ProxyHop: Codable {
     private enum CodingKeys: String, CodingKey {
         case protocolName = "protocol"
-        case host, port, username, password, cipher, uuid, sni, allowInsecure, tls
+        case host, port, username, password, cipher, uuid, security, sni, allowInsecure, tls
         case wsPath, wsHost
     }
 
@@ -114,12 +115,16 @@ extension ProxyHop: Codable {
             guard UUID(uuidString: uuid) != nil else {
                 throw DecodingError.dataCorruptedError(forKey: .uuid, in: container, debugDescription: "\"\(uuid)\" is not a valid UUID")
             }
+            let securityRaw = try container.decodeIfPresent(String.self, forKey: .security) ?? VMessSecurity.auto.rawValue
+            guard let security = VMessSecurity(rawValue: securityRaw) else {
+                throw DecodingError.dataCorruptedError(forKey: .security, in: container, debugDescription: "unknown VMess security \"\(securityRaw)\"")
+            }
             let tls = try container.decodeIfPresent(Bool.self, forKey: .tls) ?? false
             let sni = try container.decodeIfPresent(String.self, forKey: .sni)
             let allowInsecure = try container.decodeIfPresent(Bool.self, forKey: .allowInsecure) ?? false
             let wsPath = try container.decodeIfPresent(String.self, forKey: .wsPath)
             let wsHost = try container.decodeIfPresent(String.self, forKey: .wsHost)
-            protocolConfig = .vmess(uuid: uuid, tls: tls, sni: sni, allowInsecure: allowInsecure, wsPath: wsPath, wsHost: wsHost)
+            protocolConfig = .vmess(uuid: uuid, security: security, tls: tls, sni: sni, allowInsecure: allowInsecure, wsPath: wsPath, wsHost: wsHost)
 
         case .trojan:
             guard let password = try container.decodeIfPresent(String.self, forKey: .password) else {
@@ -178,9 +183,10 @@ extension ProxyHop: Codable {
             try container.encode(password, forKey: .password)
             try container.encode(cipher.rawValue, forKey: .cipher)
 
-        case .vmess(let uuid, let tls, let sni, let allowInsecure, let wsPath, let wsHost):
+        case .vmess(let uuid, let security, let tls, let sni, let allowInsecure, let wsPath, let wsHost):
             try container.encode(ProtocolName.vmess, forKey: .protocolName)
             try container.encode(uuid, forKey: .uuid)
+            if security != .auto { try container.encode(security.rawValue, forKey: .security) }
             if tls { try container.encode(tls, forKey: .tls) }
             try container.encodeIfPresent(sni, forKey: .sni)
             if allowInsecure { try container.encode(allowInsecure, forKey: .allowInsecure) }

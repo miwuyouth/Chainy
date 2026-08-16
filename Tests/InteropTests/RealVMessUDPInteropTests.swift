@@ -26,6 +26,14 @@ final class RealVMessUDPInteropTests: XCTestCase {
         try await roundTrip([CanonicalProtocol.vmess.hop()], label: "vmess")
     }
 
+    func testSingleVMessChaChaHopUDPAgainstRealXray() async throws {
+        let hop = ProxyHop(
+            host: XrayTestEnvironment.host, port: XrayTestEnvironment.Ports.vmess,
+            protocolConfig: .vmess(uuid: XrayTestEnvironment.vmessUUID, security: .chacha20Poly1305)
+        )
+        try await roundTrip([hop], label: "vmess-chacha20-poly1305")
+    }
+
     func testShadowsocksThenVMessUDPAgainstRealXray() async throws {
         try await roundTrip(
             [CanonicalProtocol.shadowsocks.hop(), CanonicalProtocol.vmess.hop()],

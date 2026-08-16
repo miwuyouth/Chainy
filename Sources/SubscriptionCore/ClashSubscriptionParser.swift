@@ -18,16 +18,16 @@
 // TLS-wrapped transport for http, and no REALITY/XTLS-vision for vless), so
 // a node needing any of those is reported in `SubscriptionParseResult.skipped`
 // instead of silently mis-imported as something that will fail to connect.
-// A vmess node's "cipher" is checked the same way: this client only speaks
-// VMess's `Security: none` body encryption (see VMessCore's own doc
-// comment), so a node whose cipher isn't absent/"auto"/"none" is skipped
-// with a clear reason rather than imported and left to fail silently at
-// connect time with no explanation anywhere.
+// Standard VMess "cipher" preferences are preserved and used by VMessCore;
+// the server identifies the actual cipher from the request header. Unknown
+// legacy cipher names are reported
+// in `skipped` instead of being silently imported.
 
 import Foundation
 import ChainCore
 import SOCKS5Core
 import ShadowsocksCore
+import VMessCore
 import HTTPProxyCore
 
 public enum ClashSubscriptionParser {
@@ -85,8 +85,18 @@ public enum ClashSubscriptionParser {
                 skipped.append(SkippedSubscriptionEntry(name: displayName, reason: "vmess node has a missing/invalid uuid"))
                 return
             }
-            if let cipher = fields["cipher"], !cipher.isEmpty, cipher != "auto", cipher != "none" {
-                skipped.append(SkippedSubscriptionEntry(name: displayName, reason: "vmess cipher \"\(cipher)\" is not supported (security=none/auto only)"))
+            // `cipher` is a client-side preference: the VMess server reads
+            // the actual cipher from our request header. Preserve AES and
+            // ChaCha; map legacy `none` exports to modern encrypted AES.
+            let cipherName = fields["cipher"]?.lowercased() ?? "auto"
+            let security: VMessSecurity
+            switch cipherName {
+            case "", "auto": security = .auto
+            case "aes-128-gcm", "none": security = .aes128GCM
+            case "chacha20-poly1305": security = .chacha20Poly1305
+            default:
+                let cipher = cipherName
+                skipped.append(SkippedSubscriptionEntry(name: displayName, reason: "vmess cipher \"\(cipher)\" is not recognized"))
                 return
             }
             let network = fields["network"] ?? "tcp"
@@ -104,7 +114,7 @@ public enum ClashSubscriptionParser {
             let ws = network == "ws" ? wsInfo(from: fields) : nil
             nodes.append(SubscriptionNode(
                 name: displayName, host: server, port: port,
-                protocolConfig: .vmess(uuid: uuid, tls: tls, sni: sni, allowInsecure: allowInsecure, wsPath: ws?.path, wsHost: ws?.host)
+                protocolConfig: .vmess(uuid: uuid, security: security, tls: tls, sni: sni, allowInsecure: allowInsecure, wsPath: ws?.path, wsHost: ws?.host)
             ))
 
         case "socks5":

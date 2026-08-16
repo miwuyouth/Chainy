@@ -39,7 +39,8 @@ final class ClashSubscriptionParserTests: XCTestCase {
       - {name: VLESS WS, server: vless5.example.com, port: 443, type: vless, uuid: 44444444-4444-4444-4444-444444444444, tls: true, network: ws, ws-opts: {path: /vless-ws}}
       - {name: VLESS WS No Path, server: vless6.example.com, port: 443, type: vless, uuid: 55555555-5555-5555-5555-555555555555, tls: true, network: ws}
       - {name: VMess GRPC, server: vm05.example.com, port: 443, type: vmess, uuid: 66666666-6666-6666-6666-666666666666, network: grpc}
-      - {name: VMess Bad Cipher, server: vm06.example.com, port: 443, type: vmess, uuid: 77777777-7777-7777-7777-777777777777, cipher: aes-128-gcm}
+      - {name: VMess AES Cipher, server: vm06.example.com, port: 443, type: vmess, uuid: 77777777-7777-7777-7777-777777777777, cipher: aes-128-gcm}
+      - {name: VMess Bad Cipher, server: vm07.example.com, port: 443, type: vmess, uuid: 88888888-8888-8888-8888-888888888888, cipher: rc4-md5}
       - {name: HTTP Auth, server: http.example.com, port: 8080, type: http, username: u, password: p}
       - {name: HTTP Open, server: httpopen.example.com, port: 8080, type: http}
       - {name: HTTPS TLS, server: https.example.com, port: 8443, type: http, tls: true}
@@ -80,6 +81,10 @@ final class ClashSubscriptionParserTests: XCTestCase {
         XCTAssertTrue(result.nodes.contains(SubscriptionNode(
             name: "VMess TLS", host: "vm03.example.com", port: 443,
             protocolConfig: .vmess(uuid: "33333333-3333-3333-3333-333333333333", tls: true)
+        )))
+        XCTAssertTrue(result.nodes.contains(SubscriptionNode(
+            name: "VMess AES Cipher", host: "vm06.example.com", port: 443,
+            protocolConfig: .vmess(uuid: "77777777-7777-7777-7777-777777777777", security: .aes128GCM)
         )))
         XCTAssertTrue(result.nodes.contains(SubscriptionNode(
             name: "SOCKS5 Auth", host: "socks.example.com", port: 1080,
@@ -149,7 +154,7 @@ final class ClashSubscriptionParserTests: XCTestCase {
 
         XCTAssertEqual(
             result.skipped.first { $0.name == "VMess Bad Cipher" }?.reason,
-            "vmess cipher \"aes-128-gcm\" is not supported (security=none/auto only)"
+            "vmess cipher \"rc4-md5\" is not recognized"
         )
         XCTAssertEqual(
             result.skipped.first { $0.name == "VLESS WS No Path" }?.reason,
@@ -159,9 +164,9 @@ final class ClashSubscriptionParserTests: XCTestCase {
 
     func testTotalNodeAndSkipCounts() {
         let result = ClashSubscriptionParser.parse(fixture)
-        // ss: HK 01, JP 01 ; vmess: Plain, WS, TLS ; socks5: Auth, Open ;
-        // trojan: Node, Insecure ; vless: TLS, Plain, WS ; http: Auth, Open = 14 supported
-        XCTAssertEqual(result.nodes.count, 14)
+        // ss: HK 01, JP 01 ; vmess: Plain, WS, TLS, AES ; socks5: Auth, Open ;
+        // trojan: Node, Insecure ; vless: TLS, Plain, WS ; http: Auth, Open = 15 supported
+        XCTAssertEqual(result.nodes.count, 15)
         // Legacy Cipher, Obfs Node, VMess Bad UUID, VMess GRPC, VMess Bad Cipher, Trojan GRPC,
         // Trojan No Password, VLESS Bad UUID, VLESS Flow, VLESS WS No Path, HTTPS TLS = 11 skipped
         XCTAssertEqual(result.skipped.count, 11)
