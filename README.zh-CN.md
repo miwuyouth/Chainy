@@ -82,7 +82,59 @@ Chainy 在本机运行，可将 VMess、Trojan、Shadowsocks、VLESS、SOCKS5 �
 | SOCKS5 | ✓ | — | ✓；前序 Chain 必须能够承载 UDP |
 | HTTP | ✓ | — | 不支持 |
 
-支持导入 Clash YAML，以及 `ss://`、`vmess://`、`trojan://`、`vless://` 和 `http://` 链接。REALITY、XTLS Vision、gRPC、HTTP/2、QUIC、Shadowsocks 插件、Hysteria、TUIC 和 SSR 等不受支持的内容会在导入时明确报告，而不是静默接受。
+支持导入 Clash YAML，以及 `ss://`、`vmess://`、`trojan://`、`vless://` 和 `http://` 链接。不受支持的内容会在导入时明确给出原因，而不是静默接受。
+
+### 不支持的功能
+
+以下功能超出 Chainy 当前范围。包含这些功能的节点或链接在导入时会被跳过并附上具体原因。
+
+**传输层（所有协议通用）**
+
+| 传输方式 | 说明 |
+|---|---|
+| gRPC | 需要 Chainy 未实现的 HTTP/2 分帧层 |
+| HTTP/2（`h2`） | 未实现 |
+| QUIC | 未实现 |
+| XHTTP | Xray 私有传输方式，未实现 |
+
+**VMess**
+
+| 功能 | 说明 |
+|---|---|
+| `alterId` > 0 | 旧版 VMess 头格式。Chainy 实现的是现代 AEAD 模式（`alterId = 0`）；导出值非零的节点导入时该字段会被忽略——服务端也必须处于 AEAD 模式连接才能成功 |
+| `security: none` | 导入时升级为 AES-128-GCM，避免明文传输负载 |
+| REALITY（`tls: reality`） | 导入时跳过 |
+| XTLS Vision（`flow: xtls-rprx-vision`） | VMess 不适用此功能，出现时跳过 |
+| mux.cool | 连接复用未实现 |
+| TLS 指纹伪造 | 需要自定义 TLS `ClientHello`；Chainy 使用系统 TLS 协议栈 |
+
+**VLESS**
+
+| 功能 | 说明 |
+|---|---|
+| XTLS Vision（`flow: xtls-rprx-vision`） | 需要传输层流量拼接，导入时跳过 |
+| REALITY（`security: reality`） | 需要 X25519 密钥交换，此处未实现，导入时跳过 |
+| TLS 指纹伪造 | 与 VMess 限制相同 |
+
+**Shadowsocks**
+
+| 功能 | 说明 |
+|---|---|
+| `xchacha20-ietf-poly1305` | 未实现 |
+| 旧版流密码（`aes-128-cfb`、`rc4` 等） | 有意不支持，使用此类加密的节点会被跳过 |
+| 插件（`obfs`、`v2ray-plugin` 等） | Shadowsocks 插件层未实现，含 `plugin` 字段的节点会被跳过 |
+
+**Trojan**
+
+| 功能 | 说明 |
+|---|---|
+| REALITY（`security: reality`） | 导入时跳过 |
+| ALPN 定制 | 使用系统 TLS 协议栈，无法覆盖单连接 ALPN 列表 |
+| TLS 指纹伪造 | 与 VMess 限制相同 |
+
+**始终跳过的协议**
+
+Hysteria、Hysteria 2、TUIC、SSR（ShadowsocksR）、`https://` 代理链接，以及上表之外的所有其他协议。
 
 Chainy 仍处于早期阶段。正式依赖前请测试自己的协议组合、查看当前 [Issues](https://github.com/miwuyouth/Chainy/issues)，并保留其他恢复网络访问的方式。
 
@@ -99,33 +151,6 @@ open Chainy.xcodeproj
 ```
 
 在 Xcode 中选择 `Chainy` scheme 后运行。Debug 构建使用 ad-hoc 签名，不需要付费开发者账号。测试和开发流程请参阅 [CONTRIBUTING.md](CONTRIBUTING.md)。
-
-### 间歇性连接诊断
-
-`chainy-diagnose` 会只读加载 Chainy 当前的 `AppData.json`，从中选择激活的 Chain，并为目标站点和对照站点反复创建全新连接：
-
-```bash
-swift run chainy-diagnose http \
-  --count 0 \
-  --burst 16 \
-  --compare-local 1080 \
-  --output ~/Desktop/chainy-diagnose.jsonl
-```
-
-默认每轮并发访问 Google、Cloudflare、Apple、Microsoft 和 GitHub，并额外瞬间发起 16 条分散到这些站点的独立连接，以模拟浏览器加载页面资源时的连接突发；任意请求失败后会立即用全新连接复测同一地址。`--burst N` 可调整压力（`0` 关闭，最高 `200`）。可多次传入 `--site URL` 自定义站点矩阵，或通过 `--sites-file PATH` 每行提供一个 URL。`--count 0` 表示持续运行，按 Control-C 停止。如果 Chainy 本地代理监听在 1080 端口，`--compare-local 1080` 会同时比较直接调用 ChainCore 与经过运行中 Chainy 监听器的结果。输出会标明失败发生在首节点 TCP 连接、代理链握手、目标 TLS、请求发送或等待首个下载字节中的哪个阶段；配置内容和节点凭据不会写入输出。
-
-突发模式覆盖浏览器最相关的“短时间大量 CONNECT/TLS/首字节响应”压力，但它不是完整浏览器引擎：不会执行 JavaScript，也不模拟 HTTP/2 多路复用、HTTP/3 或浏览器缓存。
-
-UDP 转发可使用同一个诊断程序单独测试。默认对四个公共 DNS 各执行三轮查询，也可以重复传入 `--resolver 名称=地址` 自定义目标：
-
-```bash
-swift run chainy-diagnose udp \
-  --passes 3 \
-  --timeout 8 \
-  --output ~/Desktop/chainy-udp-diagnose.jsonl
-```
-
-UDP 输出会分别给出各解析器的成功率。公共 DNS 的 UDP 53 端口可能被本地网络单独屏蔽或限速，因此单个解析器失败不能独立证明代理协议不可用。
 
 ## 隐私、安全与合理使用
 

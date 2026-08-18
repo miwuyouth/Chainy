@@ -87,7 +87,59 @@ All listed protocols can be used as TCP hops. Additional transport and terminal-
 | SOCKS5 | ✓ | — | ✓ when the preceding chain can carry UDP |
 | HTTP | ✓ | — | Not supported |
 
-Supported imports include Clash YAML and `ss://`, `vmess://`, `trojan://`, `vless://`, and `http://` links. Unsupported entries—such as REALITY, XTLS Vision, gRPC, HTTP/2, QUIC, Shadowsocks plugins, Hysteria, TUIC, and SSR—are reported during import instead of being silently accepted.
+Supported imports include Clash YAML and `ss://`, `vmess://`, `trojan://`, `vless://`, and `http://` links. Unsupported entries are reported with an explicit reason during import instead of being silently accepted.
+
+### Not supported
+
+The following features are outside Chainy's current scope. Nodes or links that require any of them are skipped at import time with a reason message.
+
+**Transport layers (all protocols)**
+
+| Transport | Notes |
+|---|---|
+| gRPC | Requires an HTTP/2 framing layer not implemented in Chainy |
+| HTTP/2 (`h2`) | Not implemented |
+| QUIC | Not implemented |
+| XHTTP | Xray-specific transport, not implemented |
+
+**VMess**
+
+| Feature | Notes |
+|---|---|
+| `alterId` > 0 | The legacy VMess header format. Chainy implements the modern AEAD mode (`alterId = 0`); nodes exported with a non-zero `alterId` are imported with the field ignored—the server must also be in AEAD mode for the connection to work |
+| `security: none` | Imported as AES-128-GCM to avoid sending unencrypted payloads |
+| REALITY (`tls: reality`) | Skipped at import |
+| XTLS Vision (`flow: xtls-rprx-vision`) | Not applicable to VMess, skipped if present |
+| mux.cool | Connection multiplexing not implemented |
+| TLS fingerprint spoofing | Requires a custom TLS `ClientHello`; Chainy uses the system TLS stack |
+
+**VLESS**
+
+| Feature | Notes |
+|---|---|
+| XTLS Vision (`flow: xtls-rprx-vision`) | Requires transport-level stream splicing; skipped at import |
+| REALITY (`security: reality`) | Requires an X25519 key exchange not implemented here; skipped at import |
+| TLS fingerprint spoofing | Same limitation as VMess |
+
+**Shadowsocks**
+
+| Feature | Notes |
+|---|---|
+| `xchacha20-ietf-poly1305` cipher | Not implemented |
+| Legacy stream ciphers (`aes-128-cfb`, `rc4`, etc.) | Intentionally unsupported; nodes using them are skipped |
+| Plugins (`obfs`, `v2ray-plugin`, etc.) | Shadowsocks plugin layer not implemented; nodes with a `plugin` field are skipped |
+
+**Trojan**
+
+| Feature | Notes |
+|---|---|
+| REALITY (`security: reality`) | Skipped at import |
+| ALPN customization | The system TLS stack is used; per-connection ALPN lists cannot be overridden |
+| TLS fingerprint spoofing | Same limitation as VMess |
+
+**Unsupported protocols (always skipped)**
+
+Hysteria, Hysteria 2, TUIC, SSR (ShadowsocksR), `https://` proxy links, and any other scheme not listed in the table above.
 
 Chainy is early-stage software. Test your own protocol combination before depending on it, review the current [issues](https://github.com/miwuyouth/Chainy/issues), and keep another way to restore network access.
 
