@@ -80,6 +80,6 @@ let package = Package(
         .testTarget(name: "ChainCoreTests", dependencies: ["ChainCore", "ProxyKit", "SOCKS5Core", "ShadowsocksCore", "VMessCore", "TrojanCore", "VLESSCore", "HTTPProxyCore"]),
         .testTarget(name: "SubscriptionCoreTests", dependencies: ["SubscriptionCore", "ChainCore", "SOCKS5Core", "ShadowsocksCore", "VMessCore", "HTTPProxyCore"]),
         .testTarget(name: "ChainyTests", dependencies: ["Chainy", "ChainCore", "SOCKS5Core", "HTTPProxyCore", "ProxyKit"]),
-        .testTarget(name: "InteropTests", dependencies: ["ChainCore", "SubscriptionCore", "SOCKS5Core", "ShadowsocksCore", "VMessCore", "TrojanCore", "VLESSCore", "HTTPProxyCore", "ProxyKit"]),
+        .testTarget(name: "InteropTests", dependencies: ["Chainy", "ChainCore", "SubscriptionCore", "SOCKS5Core", "ShadowsocksCore", "VMessCore", "TrojanCore", "VLESSCore", "HTTPProxyCore", "ProxyKit"]),
     ]
 )
